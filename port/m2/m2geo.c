@@ -37,7 +37,8 @@ static uint16_t tex16(const m2_geo *g, const m2_board *b, uint32_t addr)
     if (!n)
         return 0;
     uint16_t v;
-    memcpy(&v, b->rom.ptr[4] + (size_t)(addr % n) * 2, 2);
+    addr = (n & (n - 1)) ? addr % n : addr & (n - 1);
+    memcpy(&v, b->rom.ptr[4] + (size_t)addr * 2, 2);
     return v;
 }
 
@@ -82,6 +83,15 @@ static uint16_t float_to_zval(float f, uint32_t z_adjust)
     if (exponent < 0) return (uint16_t)((mantissa | 0x1000) >> -exponent);
     if (exponent < 15) return (uint16_t)(((uint32_t)(exponent + 1) << 12) | mantissa);
     return 0xffff;
+}
+
+/* clip_poly would return the polygon unchanged */
+static int all_inside(const pvert *in, int n, m2_vec3 pl)
+{
+    for (int i = 0; i < n; i++)
+        if (!(dot3(pl, in[i].x, in[i].y, in[i].z) >= 0))
+            return 0;
+    return 1;
 }
 
 static int clip_poly(const pvert *in, int n, pvert *out, m2_vec3 pl)
@@ -196,6 +206,19 @@ static void emit(m2_geo *g, const pvert *a, int n, const uint16_t th[4], uint8_t
         tv1 = tv0;
     }
     pvert col[M2_POLY_VERTS + 4], tmp[M2_POLY_VERTS + 4], piece[M2_POLY_VERTS + 4];
+    if (tu0 == tu1 && tv0 == tv1) {   /* inside one copy of the texture: no cuts */
+        if (n > M2_POLY_VERTS) return;
+        for (int i = 0; i < n; i++) {
+            float lu = a[i].u - tu0 * w, lv = a[i].v - tv0 * h;
+            if (mx && (tu0 & 1)) lu = w - lu;
+            if (my && (tv0 & 1)) lv = h - lv;
+            piece[i] = a[i];
+            piece[i].u = lu;
+            piece[i].v = lv;
+        }
+        emit_piece(g, piece, n, th, luma, zval, seq);
+        return;
+    }
     for (int tu = tu0; tu <= tu1; tu++) {
         int nc = n;
         memcpy(col, a, sizeof(pvert) * (size_t)n);
@@ -236,15 +259,9 @@ static void raster_poly(m2_geo *g, const m2_board *b, strip *s, uint32_t attr, i
         if (v[i].z > max_z) max_z = v[i].z;
     }
 
-    for (int i = 0; i < nv; i++) {
-        v[i].v = tex16(g, b, s->tpa + i * 2) * 0.125f;       /* 13.3 fixed point */
-        v[i].u = tex16(g, b, s->tpa + i * 2 + 1) * 0.125f;
-    }
+    /* texture coordinates and header: read below, only for drawn polygons */
+    uint32_t tpa = s->tpa, tha = s->tha;
     s->tpa += (uint32_t)nv * 2;
-
-    uint16_t th[4];
-    for (int i = 0; i < 4; i++)
-        th[i] = tex16(g, b, s->tha + i);
     int32_t tho = (attr >> 12) & 0x1f;
     if (tho & 0x10)
         tho |= -16;
@@ -268,15 +285,28 @@ static void raster_poly(m2_geo *g, const m2_board *b, strip *s, uint32_t attr, i
     g->polygon_z = zvalue;
 
     if (!cull && g->npolys < M2_MAX_POLYS) {
+        for (int i = 0; i < nv; i++) {
+            v[i].v = tex16(g, b, tpa + i * 2) * 0.125f;       /* 13.3 fixed point */
+            v[i].u = tex16(g, b, tpa + i * 2 + 1) * 0.125f;
+        }
+        uint16_t th[4];
+        for (int i = 0; i < 4; i++)
+            th[i] = tex16(g, b, tha + i);
+        /* clipped output alternates between a and c (never into v: a quad
+           clipped by 4 planes can grow to 8 vertices) */
         pvert a[M2_POLY_VERTS], c[M2_POLY_VERTS];
+        const pvert *cur = v;
+        pvert *nxt = a;
         int n = nv;
-        memcpy(a, v, sizeof(pvert) * (size_t)nv);
         for (int k = 0; k < 4 && n > 2; k++) {
-            n = clip_poly(a, n, c, g->clip_n[g->center_sel][k]);
-            memcpy(a, c, sizeof(pvert) * (size_t)n);
+            if (all_inside(cur, n, g->clip_n[g->center_sel][k]))
+                continue;
+            n = clip_poly(cur, n, nxt, g->clip_n[g->center_sel][k]);
+            cur = nxt;
+            nxt = nxt == a ? c : a;
         }
         if (n > 2)
-            emit(g, a, n, th, (uint8_t)((lumaword >> 15) & 0xff), float_to_zval(zvalue, g->z_adjust));
+            emit(g, cur, n, th, (uint8_t)((lumaword >> 15) & 0xff), float_to_zval(zvalue, g->z_adjust));
     }
 
     switch ((attr >> 8) & 3) {   /* strip linking */
@@ -469,7 +499,8 @@ m2_geo *m2geo_create(void)
         return NULL;
     g->polys = malloc(sizeof(m2_gpoly) * M2_MAX_POLYS);
     g->order = malloc(sizeof(uint32_t) * M2_MAX_POLYS);
-    if (!g->polys || !g->order) {
+    g->order_tmp = malloc(sizeof(uint32_t) * M2_MAX_POLYS);
+    if (!g->polys || !g->order || !g->order_tmp) {
         m2geo_destroy(g);
         return NULL;
     }
@@ -482,16 +513,36 @@ void m2geo_destroy(m2_geo *g)
         return;
     free(g->polys);
     free(g->order);
+    free(g->order_tmp);
     free(g);
 }
 
-static const m2_gpoly *sort_base;
-static int cmp_draw(const void *a, const void *b)
+/* One stable counting-sort pass of `in` into `out` by an 8-bit key. */
+static void radix_pass(const m2_gpoly *p, const uint32_t *in, uint32_t *out, int n, int which)
 {
-    const m2_gpoly *p = &sort_base[*(const uint32_t *)a], *q = &sort_base[*(const uint32_t *)b];
-    if (p->window != q->window) return p->window < q->window ? -1 : 1;   /* later windows on top */
-    if (p->zval != q->zval) return p->zval > q->zval ? -1 : 1;           /* far first */
-    return p->seq < q->seq ? -1 : p->seq > q->seq;                       /* older first */
+    uint32_t count[257] = { 0 };
+#define KEY(i) (which == 2 ? p[i].window : (uint8_t)((0xffffu - p[i].zval) >> (which * 8)))
+    for (int i = 0; i < n; i++)
+        count[KEY(in[i]) + 1]++;
+    for (int k = 1; k < 257; k++)
+        count[k] += count[k - 1];
+    for (int i = 0; i < n; i++)
+        out[count[KEY(in[i])]++] = in[i];
+#undef KEY
+}
+
+/* Drawing order: window ascending (later windows on top), then zval
+   descending (far first), then emission order (older first). The polygons
+   are stored in emission order, so stable passes on zval then window give
+   exactly that. Pieces of one polygon keep their order. */
+static void sort_draw(m2_geo *g)
+{
+    int n = g->npolys;
+    for (int i = 0; i < n; i++)
+        g->order_tmp[i] = (uint32_t)i;
+    radix_pass(g->polys, g->order_tmp, g->order, n, 0);
+    radix_pass(g->polys, g->order, g->order_tmp, n, 1);
+    radix_pass(g->polys, g->order_tmp, g->order, n, 2);
 }
 
 /* orig 0x4baa60 (and the pre-pass 0x4b9f70) */
@@ -578,8 +629,5 @@ void m2geo_run(m2_geo *g, const m2_board *b)
         }
     }
 done:
-    for (int i = 0; i < g->npolys; i++)
-        g->order[i] = (uint32_t)i;
-    sort_base = g->polys;
-    qsort(g->order, (size_t)g->npolys, sizeof(uint32_t), cmp_draw);
+    sort_draw(g);
 }

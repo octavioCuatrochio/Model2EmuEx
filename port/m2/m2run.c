@@ -127,7 +127,9 @@ int main(int argc, char **argv)
         wav = fopen(getenv("M2_WAV"), "wb");
         if (wav) fwrite("RIFF\0\0\0\0WAVEfmt \x10\0\0\0\x01\0\x02\0\x44\xac\0\0\x10\xb1\x02\0\x04\0\x10\0data\0\0\0\0", 1, 44, wav);
     }
-    m2_geo *geo = getenv("M2_GEO") || getenv("M2_BENCH") ? m2geo_create() : NULL;
+    int geohash = getenv("M2_GEOHASH") != NULL;   /* 3D output checksum, every frame */
+    uint64_t gh = 1469598103934665603ull;
+    m2_geo *geo = getenv("M2_GEO") || getenv("M2_BENCH") || geohash ? m2geo_create() : NULL;
     m2_input_state ins;
     m2input_init(&ins);
 
@@ -167,6 +169,22 @@ int main(int argc, char **argv)
             m2geo_run(geo, b);
             double t3 = now_ms();
             tb[0] += t1 - t0; tb[1] += t2 - t1; tb[2] += t3 - t2;
+        }
+        if (geohash) {   /* FNV-1a over the polygons in drawing order */
+            m2geo_run(geo, b);
+            for (int i = 0; i < geo->npolys; i++) {
+                const m2_gpoly *p = &geo->polys[geo->order[i]];
+                uint8_t h[16];
+                memcpy(h, p->th, 8);
+                h[8] = p->luma; h[9] = p->nverts; h[10] = p->window;
+                memcpy(h + 11, &p->zval, 2);
+                h[13] = h[14] = h[15] = 0;
+                for (int k = 0; k < 16; k++) gh = (gh ^ h[k]) * 1099511628211ull;
+                const uint8_t *v = (const uint8_t *)p->v;
+                for (size_t k = 0; k < sizeof(m2_gvert) * p->nverts; k++) gh = (gh ^ v[k]) * 1099511628211ull;
+            }
+            if (f % 300 == 0 || f == frames)
+                printf("geohash %d: %016llx\n", f, (unsigned long long)gh);
         }
         if (f == 1 || f % 60 == 0 || f == frames || (getenv("M2_FROM") && f >= atoi(getenv("M2_FROM")) && f <= atoi(getenv("M2_TO")))) {
             printf("frame %4d: ip=%08x busy=%3u%% irq en=%03x pend=%03x | tile %lu pal %lu tex %lu cg %lu snd %lu | "

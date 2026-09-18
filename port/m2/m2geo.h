@@ -75,6 +75,7 @@ typedef struct {
     /* output, in drawing order after m2geo_run */
     m2_gpoly *polys;
     uint32_t *order;
+    uint32_t *order_tmp;             /* sort scratch */
     int       npolys;
     uint32_t  seq;
 } m2_geo;

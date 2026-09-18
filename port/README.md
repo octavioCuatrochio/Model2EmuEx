@@ -163,6 +163,8 @@ Controlled by environment variables:
 | `M2_SHOT=file.ppm` | write the composited 2D tile layers at the end |
 | `M2_DUMP=prefix`, `M2_NIB=n` | write each raw tile layer to `prefix-layerN.ppm` (`M2_NIB`: pixel order, default 2) |
 | `M2_GEO=1` | run the 3D geometrizer and print polygon counts |
+| `M2_BENCH=1` | time the per-frame CPU work (emulation, tile layers, geometrizer, sound) and print ms per frame at the end |
+| `M2_GEOHASH=1` | run the geometrizer every frame and print a checksum of its output (polygons in drawing order) every 300 frames; for checking that a change leaves the 3D output identical |
 | `M2_WAV=file.wav` | run the sound board and record its output; prints sound CPU state |
 | `M2_PROF=n` | from frame n, print the 20 hottest i960 addresses |
 | `M2_IOTRACE=n` | from frame n, count I/O board reads |
