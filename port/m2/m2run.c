@@ -3,6 +3,7 @@
 #include "m2tile.h"
 #include "m2input.h"
 #include "m2geo.h"
+#include "m2pipe.h"
 #include "../snd/m2snd.h"
 
 #include <stdio.h>
@@ -109,6 +110,14 @@ int main(int argc, char **argv)
     b->cpu->invalid_opcode = on_invalid;
     b->hooks.slice_done = on_slice;
     b->hooks.io_read = on_io;
+    /* M2_PIPE=1: video goes through m2pipe (capture + apply every frame, on
+       this thread), to check that the hand-over reproduces the output */
+    m2_pipe *pipe = getenv("M2_PIPE") ? m2pipe_create() : NULL;
+    m2_hooks replay = b->hooks;
+    if (pipe)
+        m2pipe_attach(pipe, b);
+    const m2_board *vb = b;   /* what the renderers read */
+    int reset_at = getenv("M2_RESET_AT") ? atoi(getenv("M2_RESET_AT")) : -1;
     int io_from = getenv("M2_IOTRACE") ? atoi(getenv("M2_IOTRACE")) : -1;
     board = b;
     int prof_from = getenv("M2_PROF") ? atoi(getenv("M2_PROF")) : -1;
@@ -162,16 +171,27 @@ int main(int argc, char **argv)
             m2input_apply(&ins, b);
         }
         m2_run_frame(b);
+        if (reset_at == f) {   /* as the frontend's F3 */
+            m2_reset(b);
+            if (pipe)
+                m2pipe_invalidate(pipe);
+            else
+                m2tile_init(&tg, 1.0f, 1.0f, 1.0f);
+        }
+        if (pipe) {
+            m2pipe_capture(pipe, b);
+            vb = m2pipe_apply(pipe, &replay, NULL);
+        }
         if (bench) {
             double t1 = now_ms();
-            m2tile_render(&tg, b);
+            m2tile_render(&tg, vb);
             double t2 = now_ms();
-            m2geo_run(geo, b);
+            m2geo_run(geo, vb);
             double t3 = now_ms();
             tb[0] += t1 - t0; tb[1] += t2 - t1; tb[2] += t3 - t2;
         }
-        if (geohash) {   /* FNV-1a over the polygons in drawing order */
-            m2geo_run(geo, b);
+        if (geohash) {   /* FNV-1a over the polygons in drawing order, then the tile output */
+            m2geo_run(geo, vb);
             for (int i = 0; i < geo->npolys; i++) {
                 const m2_gpoly *p = &geo->polys[geo->order[i]];
                 uint8_t h[16];
@@ -182,6 +202,19 @@ int main(int argc, char **argv)
                 for (int k = 0; k < 16; k++) gh = (gh ^ h[k]) * 1099511628211ull;
                 const uint8_t *v = (const uint8_t *)p->v;
                 for (size_t k = 0; k < sizeof(m2_gvert) * p->nverts; k++) gh = (gh ^ v[k]) * 1099511628211ull;
+            }
+            m2tile_render(&tg, vb);
+            const uint8_t *tb8 = (const uint8_t *)tg.layer;
+            for (size_t k = 0; k < sizeof tg.layer; k += 8) {   /* 8 bytes a step: speed over quality */
+                uint64_t w8;
+                memcpy(&w8, tb8 + k, 8);
+                gh = (gh ^ w8) * 1099511628211ull;
+            }
+            const uint8_t *pb8 = (const uint8_t *)tg.pal;
+            for (size_t k = 0; k < sizeof tg.pal; k += 8) {
+                uint64_t w8;
+                memcpy(&w8, pb8 + k, 8);
+                gh = (gh ^ w8) * 1099511628211ull;
             }
             if (f % 300 == 0 || f == frames)
                 printf("geohash %d: %016llx\n", f, (unsigned long long)gh);
@@ -202,7 +235,7 @@ int main(int argc, char **argv)
                 printf("    snd: %s\n", sb);
             }
             if (geo) {
-                m2geo_run(geo, b);
+                m2geo_run(geo, vb);
                 printf("    geo: list at %05x, %d polys, %d windows, hsync %d vsync %d", b->tgp.reg_803008 & 0x7ffff,
                        geo->npolys, geo->cur_window, b->hsync, b->vsync);
                 if (geo->npolys) {

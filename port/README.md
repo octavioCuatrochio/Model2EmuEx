@@ -44,6 +44,7 @@ Example, 16:9 fullscreen with a pad-friendly shifter:
 | `--gamma G` or `--gamma R,G,B` | 1.0 | colour gamma, as the original's GammaR/G/B (applies to tiles and 3D); above 1 brightens mid-tones |
 | `--shifter sequential\|hpattern` | hpattern | keyboard gears: one key per gear, or A/S step down/up (the original's UpDownGears) |
 | `--hold-gears` | off | H-pattern: drop to neutral when no gear key is held (the original's HoldGears) |
+| `--pipeline on\|off` | on | on: the machine runs on its own thread, one frame ahead of the drawing (much faster on multi-core CPUs, one frame more input latency); off: emulate and draw each frame in turn |
 
 `-h` / `--help` (or no game name) prints a short usage summary and the game list.
 Unknown options stop the program with a message.
@@ -147,6 +148,7 @@ over. With no file, Daytona starts with its link setting on "single"
 | `M2EMU_SHOT=file.ppm:N` | m2emu | save the window's picture at frame N, then quit |
 | `M2EMU_KEYS=frame:key:frames,...` | m2emu | press keys by script (`key` = DirectInput code in hex, e.g. `06` coin, `02` start, `c8` up) |
 | `M2EMU_BENCH=N` | m2emu | run N frames unthrottled and print a timing split |
+| `M2EMU_ACTIONS=iter:a,...` | m2emu | frontend actions by main-loop iteration: `p` pause/unpause, `r` reset (F3), `q` quit |
 
 ## Headless tool: m2run
 
@@ -163,8 +165,10 @@ Controlled by environment variables:
 | `M2_SHOT=file.ppm` | write the composited 2D tile layers at the end |
 | `M2_DUMP=prefix`, `M2_NIB=n` | write each raw tile layer to `prefix-layerN.ppm` (`M2_NIB`: pixel order, default 2) |
 | `M2_GEO=1` | run the 3D geometrizer and print polygon counts |
+| `M2_PIPE=1` | pass the video through the frame hand-over (`m2pipe`) as `m2emu` does; with `M2_GEOHASH` the checksums must match a run without it |
+| `M2_RESET_AT=n` | reset the machine after frame n, as F3 |
 | `M2_BENCH=1` | time the per-frame CPU work (emulation, tile layers, geometrizer, sound) and print ms per frame at the end |
-| `M2_GEOHASH=1` | run the geometrizer every frame and print a checksum of its output (polygons in drawing order) every 300 frames; for checking that a change leaves the 3D output identical |
+| `M2_GEOHASH=1` | run the geometrizer and tile layers every frame and print a checksum of their output (polygons in drawing order, both layers, the palette) every 300 frames; for checking that a change leaves the video output identical |
 | `M2_WAV=file.wav` | run the sound board and record its output; prints sound CPU state |
 | `M2_PROF=n` | from frame n, print the 20 hottest i960 addresses |
 | `M2_IOTRACE=n` | from frame n, count I/O board reads |
@@ -179,7 +183,7 @@ Controlled by environment variables:
 |-----------|----------|
 | `i960/` | main CPU (Intel i960KB), with its bug list `QUIRKS.md` |
 | `tgp/` | geometry DSP (Fujitsu MB86234 TGP) |
-| `m2/` | board, ROM loader, 2D tile layers, 3D, renderer, input, widescreen rules; `m2/README.md` and `m2/QUIRKS.md` |
+| `m2/` | board, ROM loader, 2D tile layers, 3D, renderer, input, widescreen rules, frame hand-over between threads; `m2/README.md` and `m2/QUIRKS.md` |
 | `snd/` | sound boards (SCSP, MultiPCM, YM3438), `snd/QUIRKS.md` |
 | `m68k/`, `ymfm/` | third-party cores: Musashi 68000 (MIT), ymfm (BSD-3) |
 | `sdl/` | the desktop frontend |

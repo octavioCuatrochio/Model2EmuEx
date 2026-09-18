@@ -27,6 +27,9 @@ typedef struct {
     void (*texture_written)(void *user, int bank, uint32_t offset);   /* byte offset in tex0/tex1 */
     void (*luma_written)(void *user);
     void (*cg_written)(void *user);
+    /* CG write through the 0x1180000 mirror: the original's renderer isn't
+       told (nothing is re-decoded); for consumers keeping a copy of CG RAM */
+    void (*cg_mirror_written)(void *user);
     /* sound board: command byte from the i960 (Model 2A: SCSP MIDI in) */
     void (*sound_command)(void *user, uint8_t cmd);
     /* drive board (force feedback) commands */

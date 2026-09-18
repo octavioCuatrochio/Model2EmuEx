@@ -4,7 +4,7 @@
  *   m2emu [-r romdir] [-n nvdir] [--vsync] [--fullscreen] [--size WxH]
  *         [--widescreen 16:9|16:10|off] [--scale N|auto] [--sharp]
  *         [--mesh blend|checker] [--saturation S] [--gamma G | --gamma R,G,B]
- *         [--shifter sequential|hpattern] [--hold-gears] <game>
+ *         [--shifter sequential|hpattern] [--hold-gears] [--pipeline on|off] <game>
  *
  * Keys (from the original's input definitions): 5/6 coin, 1/2 start,
  * F1 service, F2 test, arrows, Z X C V / A S D F G game buttons.
@@ -17,6 +17,7 @@
 #include "../m2/m2geo.h"
 #include "../m2/m2gl.h"
 #include "../m2/m2input.h"
+#include "../m2/m2pipe.h"
 #include "../m2/m2tile.h"
 #include "../m2/m2wide.h"
 #include "../snd/m2snd.h"
@@ -46,6 +47,34 @@ static void on_sound(void *u, uint8_t c) { (void)u; if (snd) m2snd_command(snd, 
 static void audio_callback(void *u, Uint8 *stream, int len)
 {
     m2snd_render(u, (int16_t *)stream, len / 4);
+}
+
+/* The board runs on its own thread, one frame ahead of the renderer: while
+   the main thread draws frame N (tiles, geometrizer, GL), this runs frame
+   N + 1 and hands it over through m2pipe. `go` starts a frame, `done` says
+   it is captured; between the two the main thread leaves the board alone. */
+typedef struct {
+    m2_board *b;
+    m2_pipe  *pipe;
+    SDL_sem  *go, *done;
+    int       quit;
+    Uint64    ticks;   /* time spent in the last frame */
+} emu_thread_ctx;
+
+static int emu_thread(void *arg)
+{
+    emu_thread_ctx *c = arg;
+    for (;;) {
+        SDL_SemWait(c->go);
+        if (c->quit)
+            break;
+        Uint64 t0 = SDL_GetPerformanceCounter();
+        m2_run_frame(c->b);
+        m2pipe_capture(c->pipe, c->b);
+        c->ticks = SDL_GetPerformanceCounter() - t0;
+        SDL_SemPost(c->done);
+    }
+    return 0;
 }
 static void logmsg(const char *m) { fprintf(stderr, "%s\n", m); }
 
@@ -111,7 +140,7 @@ int main(int argc, char **argv)
     int vsync = 0, fullscreen = 0, win_w = 0, win_h = 0, smooth = 1;
     int wide_on = 0, scale_opt = 0;   /* scale 0 = auto */
     double wide_ratio = 16.0 / 9.0;
-    int mesh_blend = 1, updown_gears = 0, hold_gears = 0;
+    int mesh_blend = 1, updown_gears = 0, hold_gears = 0, pipelined = 1;
     float saturation = 1.0f, gamma[3] = { 1.0f, 1.0f, 1.0f };
 
     for (int i = 1; i < argc; i++) {
@@ -122,6 +151,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--sharp")) smooth = 0;
         else if (!strcmp(argv[i], "--shifter") && i + 1 < argc) updown_gears = !strcmp(argv[++i], "sequential");
         else if (!strcmp(argv[i], "--hold-gears")) hold_gears = 1;
+        else if (!strcmp(argv[i], "--pipeline") && i + 1 < argc) pipelined = strcmp(argv[++i], "off") != 0;
         else if (!strcmp(argv[i], "--mesh") && i + 1 < argc) mesh_blend = strcmp(argv[++i], "checker") != 0;
         else if (!strcmp(argv[i], "--saturation") && i + 1 < argc) saturation = (float)atof(argv[++i]);
         else if (!strcmp(argv[i], "--gamma") && i + 1 < argc) {
@@ -146,7 +176,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "usage: m2emu [-r romdir] [-n nvdir] [--vsync] [--fullscreen] [--size WxH]\n"
                         "             [--widescreen 16:9|16:10|off] [--scale N|auto] [--sharp]\n"
                         "             [--mesh blend|checker] [--saturation S] [--gamma G | --gamma R,G,B]\n"
-                        "             [--shifter sequential|hpattern] [--hold-gears] <game>\n"
+                        "             [--shifter sequential|hpattern] [--hold-gears] [--pipeline on|off] <game>\n"
                         "keys: Esc quit, F3 reset, P pause, Tab fast forward, F7 saturation, F8 mesh,\n"
                         "      F9 widescreen, F10 scale, F11 fullscreen. Full guide: port/README.md\n"
                         "games:");
@@ -260,14 +290,27 @@ int main(int argc, char **argv)
     }
 
     const char *script = getenv("M2EMU_KEYS");
+    const char *actions = getenv("M2EMU_ACTIONS");
+    long iter = 0;
     int bench = getenv("M2EMU_BENCH") ? atoi(getenv("M2EMU_BENCH")) : 0;
-    double bt[3] = { 0, 0, 0 };
+    double bt[4] = { 0, 0, 0, 0 };
+
+    m2_pipe *pipe = m2pipe_create();
+    if (!pipe) { fprintf(stderr, "out of memory\n"); return 1; }
+    const m2_hooks replay = b->hooks;   /* the video hooks now run on this thread */
+    m2pipe_attach(pipe, b);
+    emu_thread_ctx ec = { b, pipe, SDL_CreateSemaphore(0), SDL_CreateSemaphore(0), 0, 0 };
+    SDL_Thread *emu = ec.go && ec.done ? SDL_CreateThread(emu_thread, "m2 board", &ec) : NULL;
+    if (!emu) { fprintf(stderr, "emulation thread: %s\n", SDL_GetError()); return 1; }
+    int in_flight = 0, want_reset = 0;
+    const m2_board *vb = NULL;   /* the drawn frame's video memories */
+    m2_pipe_frame pf = { 0, { 0, 0 } };
 
     const double frame_s = 1.0 / game->fps;
     const double freq = (double)SDL_GetPerformanceFrequency();
     double next = SDL_GetPerformanceCounter() / freq;
     int running = 1, paused = 0, fast = 0, frames = 0;
-    double fps_t = next;
+    double fps_t = next, bench_t0 = next;
 
     while (running) {
         SDL_Event e;
@@ -286,15 +329,7 @@ int main(int argc, char **argv)
                         paused = !paused;
                         if (audio) SDL_PauseAudioDevice(audio, paused);
                     }
-                    else if (sc == SDL_SCANCODE_F3) {   /* reset, keeping backup RAM and EEPROM */
-                        m2_nvram_save(b, nvpath);
-                        m2_reset(b);
-                        m2_nvram_load(b, nvpath);
-                        m2tile_init(&tilegen, gamma[0], gamma[1], gamma[2]);
-                        if (audio) SDL_LockAudioDevice(audio);
-                        if (snd) m2snd_reset(snd);
-                        if (audio) SDL_UnlockAudioDevice(audio);
-                    }
+                    else if (sc == SDL_SCANCODE_F3) want_reset = 1;
                     else if (sc == SDL_SCANCODE_F7) saturation = saturation < 1.1f ? 1.2f : saturation < 1.3f ? 1.4f : 1.0f;
                     else if (sc == SDL_SCANCODE_F8) mesh_blend = !mesh_blend;
                     else if (sc == SDL_SCANCODE_F9) wide_on = !wide_on;
@@ -345,6 +380,43 @@ int main(int argc, char **argv)
             }
         }
 
+        if (actions) {   /* debugging: M2EMU_ACTIONS=iteration:p|r|q,... (pause, F3, quit) */
+            for (const char *k = actions; *k;) {
+                long at = 0;
+                char act = 0;
+                if (sscanf(k, "%ld:%c", &at, &act) == 2 && at == iter) {
+                    if (act == 'p') paused = !paused;
+                    if (act == 'r') want_reset = 1;
+                    if (act == 'q') running = 0;
+                    if (act == 'p' && audio) SDL_PauseAudioDevice(audio, paused);
+                }
+                k = strchr(k, ',');
+                if (!k) break;
+                k++;
+            }
+        }
+        iter++;
+
+        /* collect the frame the board thread was running; from here until
+           the next go, the board is ours */
+        Uint64 t0 = SDL_GetPerformanceCounter();
+        int got = in_flight;
+        if (in_flight) {
+            SDL_SemWait(ec.done);
+            in_flight = 0;
+        }
+        Uint64 t1 = SDL_GetPerformanceCounter();
+
+        if (want_reset) {   /* F3: reset, keeping backup RAM and EEPROM */
+            m2_nvram_save(b, nvpath);
+            m2_reset(b);
+            m2_nvram_load(b, nvpath);
+            m2pipe_invalidate(pipe);
+            if (audio) SDL_LockAudioDevice(audio);
+            if (snd) m2snd_reset(snd);
+            if (audio) SDL_UnlockAudioDevice(audio);
+            want_reset = 0;
+        }
         if (script) {   /* debugging: M2EMU_KEYS=frame:dik:frames,... (dik in hex) */
             for (const char *k = script; *k;) {
                 int at = 0, len = 0;
@@ -358,48 +430,65 @@ int main(int argc, char **argv)
                 k++;
             }
         }
-        Uint64 t0 = SDL_GetPerformanceCounter();
-        if (!paused) {
+        if (!paused) {   /* start the next frame */
             m2input_apply(&in, b);
-            m2_run_frame(b);
             frames++;
+            if (pipelined) {
+                SDL_SemPost(ec.go);
+                in_flight = 1;
+            } else {   /* --pipeline off: run it here and draw it now */
+                m2_run_frame(b);
+                m2pipe_capture(pipe, b);
+                t1 = SDL_GetPerformanceCounter();
+                ec.ticks = t1 - t0;
+                got = 1;
+            }
         }
-        Uint64 t1 = SDL_GetPerformanceCounter();
+
+        /* draw the collected frame (or the last one again) */
+        if (got)   /* after start and reset the pipe reports everything as written */
+            vb = m2pipe_apply(pipe, &replay, &pf);
         int w, h;
         SDL_GL_GetDrawableSize(win, &w, &h);
         /* widescreen: a wider frame; the game's rule decides each frame
            whether the 3D sees the extra width and which layers stretch */
         m2_view view;
-        m2_wide_state ws;
-        m2wide_update(b, &ws);
         view.frame_w = wide_on ? ((int)(M2_SCREEN_W * wide_ratio * 0.75 + 0.5) + 1) & ~1 : M2_SCREEN_W;
-        view.stretch = wide_on ? ws.stretch : 0;
+        view.stretch = wide_on ? pf.wide.stretch : 0;
         view.smooth = smooth;
         view.mesh_blend = mesh_blend;
         view.saturation = saturation;
         view.scale = scale_opt ? scale_opt : h / M2_SCREEN_H;
         if (view.scale < 1) view.scale = 1;
         geo->wide_extra = (view.frame_w - M2_SCREEN_W) * 0.5f;
-        geo->wide_fov = wide_on && ws.widescreen;
+        geo->wide_fov = wide_on && pf.wide.widescreen;
 
-        m2tile_render(&tilegen, b);
-        m2geo_run(geo, b);
+        if (got) {
+            m2tile_render(&tilegen, vb);
+            m2geo_run(geo, vb);
+        }
         Uint64 t2 = SDL_GetPerformanceCounter();
-        m2gl_draw(gl, b, &tilegen, geo, &view, w, h);
-        if (bench) {   /* M2EMU_BENCH=frames: unthrottled, timing split */
+        if (vb)
+            m2gl_draw(gl, vb, &tilegen, geo, &view, w, h);
+        if (bench && got) {   /* M2EMU_BENCH=frames: unthrottled, timing split */
             glFinish();
             Uint64 t3 = SDL_GetPerformanceCounter();
-            bt[0] += (double)(t1 - t0) / freq;
-            bt[1] += (double)(t2 - t1) / freq;
-            bt[2] += (double)(t3 - t2) / freq;
-            if ((int)b->frame >= bench) {
-                double tot = bt[0] + bt[1] + bt[2];
-                printf("%d frames: %.1f fps | per frame: emu %.2f ms, tiles+geo %.2f ms, gl %.2f ms\n",
-                       bench, bench / tot, bt[0] * 1000 / bench, bt[1] * 1000 / bench, bt[2] * 1000 / bench);
+            bt[0] += (double)ec.ticks / freq;
+            bt[1] += (double)(t1 - t0) / freq;
+            bt[2] += (double)(t2 - t1) / freq;
+            bt[3] += (double)(t3 - t2) / freq;
+            if (pf.frame == 1)
+                bench_t0 = SDL_GetPerformanceCounter() / freq;
+            if ((int)pf.frame >= bench) {
+                double wall = SDL_GetPerformanceCounter() / freq - bench_t0;
+                printf("%d frames: %.1f fps | per frame: board %.2f ms (own thread), "
+                       "tiles+geo %.2f ms, gl %.2f ms, waiting for the board %.2f ms\n",
+                       bench, (bench - 1) / wall, bt[0] * 1000 / bench, bt[2] * 1000 / bench,
+                       bt[3] * 1000 / bench, bt[1] * 1000 / bench);
                 running = 0;
             }
         }
-        if (shot_frame && (int)b->frame == shot_frame) {   /* debugging: M2EMU_SHOT=file.ppm:frame */
+        if (shot_frame && got && (int)pf.frame == shot_frame) {   /* debugging: M2EMU_SHOT=file.ppm:frame */
             unsigned char *px = malloc((size_t)w * h * 4);
             FILE *f = fopen(shot_path, "wb");
             if (px && f) {
@@ -434,6 +523,14 @@ int main(int argc, char **argv)
         }
     }
 
+    if (in_flight)
+        SDL_SemWait(ec.done);
+    ec.quit = 1;
+    SDL_SemPost(ec.go);
+    SDL_WaitThread(emu, NULL);
+    SDL_DestroySemaphore(ec.go);
+    SDL_DestroySemaphore(ec.done);
+    m2pipe_destroy(pipe);
     if (m2_nvram_save(b, nvpath))
         fprintf(stderr, "cannot save %s: %s\n", nvpath, strerror(errno));
     if (audio) SDL_CloseAudioDevice(audio);

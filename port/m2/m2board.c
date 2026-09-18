@@ -370,6 +370,9 @@ static void w32_tile(void *u, uint32_t a, uint32_t v)
 static void w8_cg(void *u, uint32_t a, uint8_t v)   { m2_board *b = B(u); b->cg[a & 0x7ffff] = v; HOOK(cg_written); }
 static void w16_cg(void *u, uint32_t a, uint16_t v) { m2_board *b = B(u); st16(b->cg + (a & 0x7ffff), v); HOOK(cg_written); }
 static void w32_cg(void *u, uint32_t a, uint32_t v) { m2_board *b = B(u); st32(b->cg + (a & 0x7ffff), v); HOOK(cg_written); }
+static void w8_cgm(void *u, uint32_t a, uint8_t v)   { m2_board *b = B(u); b->cg[a & 0x7ffff] = v; HOOK(cg_mirror_written); }
+static void w16_cgm(void *u, uint32_t a, uint16_t v) { m2_board *b = B(u); st16(b->cg + (a & 0x7ffff), v); HOOK(cg_mirror_written); }
+static void w32_cgm(void *u, uint32_t a, uint32_t v) { m2_board *b = B(u); st32(b->cg + (a & 0x7ffff), v); HOOK(cg_mirror_written); }
 
 /* palette 0x1800000, orig 0x4c7020 / 0x4c6fe0 / 0x4c6fa0 */
 static void w8_pal(void *u, uint32_t a, uint8_t v)   { m2_board *b = B(u); b->pal[a & 0x3fff] = v; HOOK(palette_written, a & 0x3fff); }
@@ -673,7 +676,7 @@ static void setup_map(m2_board *b)   /* orig 0x4cd450 */
     map_r(b, 0x110, 1, b->tile, NULL, NULL, NULL);
     map_w(b, 0x110, 1, NULL, w8_tilem, w16_tilem, w32_tilem);
     map_r(b, 0x118, 8, b->cg, NULL, NULL, NULL);
-    map_w(b, 0x118, 8, b->cg, NULL, NULL, NULL);
+    map_w(b, 0x118, 8, NULL, w8_cgm, w16_cgm, w32_cgm);
 
     /* palette, colour translation, network, I/O, backup RAM */
     map_r(b, 0x180, 1, b->pal, NULL, NULL, NULL);
