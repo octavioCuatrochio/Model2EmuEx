@@ -40,6 +40,13 @@ static void on_tex(void *u, int bank, uint32_t o) { (void)u; if (gl) m2gl_textur
 static void on_luma(void *u) { (void)u; if (gl) m2gl_luma_written(gl); }
 static void on_pal(void *u, uint32_t o) { (void)u; m2tile_palette_written(&tilegen, o); if (gl) m2gl_palette_written(gl, o); }
 static void on_sound(void *u, uint8_t c) { (void)u; if (snd) m2snd_command(snd, c); }
+
+/* The sound board runs here, on SDL's audio thread, at the device's pace:
+   its tempo stays right even when the emulation can't keep full speed. */
+static void audio_callback(void *u, Uint8 *stream, int len)
+{
+    m2snd_render(u, (int16_t *)stream, len / 4);
+}
 static void logmsg(const char *m) { fprintf(stderr, "%s\n", m); }
 
 /* SDL scancode -> DirectInput scan code (PC set 1), for the keys games use */
@@ -217,14 +224,14 @@ int main(int argc, char **argv)
         want.format = AUDIO_S16SYS;
         want.channels = 2;
         want.samples = 1024;
+        want.callback = audio_callback;
+        want.userdata = snd;
         audio = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
         if (!audio)
             fprintf(stderr, "audio: %s\n", SDL_GetError());
         else
             SDL_PauseAudioDevice(audio, 0);
     }
-    double sample_debt = 0;
-    static int16_t audio_buf[M2SND_RATE / 20 * 2];
 
     /* extra pad mappings (SDL_GameControllerDB format), if present */
     {
@@ -275,13 +282,18 @@ int main(int argc, char **argv)
                 SDL_Scancode sc = e.key.keysym.scancode;
                 if (down && !e.key.repeat) {
                     if (sc == SDL_SCANCODE_ESCAPE) running = 0;
-                    else if (sc == SDL_SCANCODE_P) paused = !paused;
+                    else if (sc == SDL_SCANCODE_P) {
+                        paused = !paused;
+                        if (audio) SDL_PauseAudioDevice(audio, paused);
+                    }
                     else if (sc == SDL_SCANCODE_F3) {   /* reset, keeping backup RAM and EEPROM */
                         m2_nvram_save(b, nvpath);
                         m2_reset(b);
                         m2_nvram_load(b, nvpath);
                         m2tile_init(&tilegen, gamma[0], gamma[1], gamma[2]);
+                        if (audio) SDL_LockAudioDevice(audio);
                         if (snd) m2snd_reset(snd);
+                        if (audio) SDL_UnlockAudioDevice(audio);
                     }
                     else if (sc == SDL_SCANCODE_F7) saturation = saturation < 1.1f ? 1.2f : saturation < 1.3f ? 1.4f : 1.0f;
                     else if (sc == SDL_SCANCODE_F8) mesh_blend = !mesh_blend;
@@ -351,20 +363,6 @@ int main(int argc, char **argv)
             m2input_apply(&in, b);
             m2_run_frame(b);
             frames++;
-            if (snd) {   /* this frame's audio; the queue absorbs clock drift */
-                sample_debt += (double)M2SND_RATE / game->fps;
-                int n = (int)sample_debt;
-                sample_debt -= n;
-                if (n > M2SND_RATE / 20) n = M2SND_RATE / 20;
-                m2snd_render(snd, audio_buf, n);
-                if (audio) {
-                    Uint32 queued = SDL_GetQueuedAudioSize(audio) / 4;
-                    if (queued < M2SND_RATE / 50)   /* under 20 ms: stretch this frame */
-                        SDL_QueueAudio(audio, audio_buf, (Uint32)n * 4);
-                    if (queued < M2SND_RATE * 3 / 20)   /* drop when over 150 ms (fast forward) */
-                        SDL_QueueAudio(audio, audio_buf, (Uint32)n * 4);
-                }
-            }
         }
         Uint64 t1 = SDL_GetPerformanceCounter();
         int w, h;

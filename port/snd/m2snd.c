@@ -6,12 +6,14 @@
 #include "../m2/m2board.h"
 #include "../m68k/m68k.h"
 
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define M1_RAM_SIZE  0x10000    /* Model 1 board: 0xf00000-0xf0ffff */
 #define M2A_RAM_SIZE 0x80000    /* Model 2A: 0x000000-0x07ffff, mirrored to 0x0fffff */
 #define SLICE 16
+#define QSIZE 256              /* command queue, a power of two */
 
 struct m2_snd {
     int type;
@@ -33,6 +35,11 @@ struct m2_snd {
 
     int32_t mix[SLICE * 2];
     unsigned long chip_writes, commands, cmd_reads;
+
+    /* i960 -> sound board: single producer (m2snd_command), single consumer
+       (m2snd_render), so the board can run on the audio thread */
+    uint8_t q[QSIZE];
+    _Atomic unsigned qw, qr;
 };
 
 static m2_snd *cur;   /* Musashi's callbacks are global */
@@ -302,6 +309,7 @@ void m2snd_reset(m2_snd *s)
     cur = s;
     memset(s->ram, 0, s->ram_size);
     s->fifo_rd = s->fifo_wr = 0;
+    atomic_store(&s->qr, atomic_load(&s->qw));   /* drop pending commands */
     s->irq_lines = 0;
     s->pcm_bank[0] = s->pcm_bank[1] = 0;
     s->cycle_debt = 0;
@@ -321,6 +329,15 @@ void m2snd_reset(m2_snd *s)
 
 void m2snd_command(m2_snd *s, uint8_t cmd)
 {
+    unsigned w = atomic_load_explicit(&s->qw, memory_order_relaxed);
+    if (w - atomic_load_explicit(&s->qr, memory_order_acquire) >= QSIZE)
+        return;   /* the sound board is far behind: drop */
+    s->q[w & (QSIZE - 1)] = cmd;
+    atomic_store_explicit(&s->qw, w + 1, memory_order_release);
+}
+
+static void deliver(m2_snd *s, uint8_t cmd)
+{
     s->commands++;
     if (s->type == 0) {
         unsigned next = (s->fifo_wr + 1) & 31;
@@ -329,11 +346,21 @@ void m2snd_command(m2_snd *s, uint8_t cmd)
             s->fifo_wr = next;
         }
         s->irq_lines |= 1u << 2;
-        if (cur == s)
-            update_irq(s);
+        update_irq(s);
     } else {
         scsp_midi_in(s->scsp, cmd);
     }
+}
+
+static void drain(m2_snd *s)
+{
+    unsigned r = atomic_load_explicit(&s->qr, memory_order_relaxed);
+    unsigned w = atomic_load_explicit(&s->qw, memory_order_acquire);
+    if (r == w)
+        return;
+    for (; r != w; r++)
+        deliver(s, s->q[r & (QSIZE - 1)]);
+    atomic_store_explicit(&s->qr, r, memory_order_release);
 }
 
 void m2snd_render(m2_snd *s, int16_t *out, int n)
@@ -341,6 +368,7 @@ void m2snd_render(m2_snd *s, int16_t *out, int n)
     cur = s;
     while (n > 0) {
         int k = n < SLICE ? n : SLICE;
+        drain(s);
         s->cycle_debt += s->cycles_per_sample * k;
         int run = (int)s->cycle_debt;
         s->cycle_debt -= m68k_execute(run);

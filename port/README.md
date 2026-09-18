@@ -55,7 +55,7 @@ Unknown options stop the program with a message.
 | Esc | quit (saves backup RAM / EEPROM) |
 | F3 | reset the machine (save data kept) |
 | P | pause |
-| Tab (hold) | fast forward (sound is dropped while the queue is full) |
+| Tab (hold) | fast forward (sound keeps normal speed; some sound commands may be dropped) |
 | F7 | saturation 1.0 / 1.2 / 1.4 |
 | F8 | mesh: blend / checker |
 | F9 | widescreen on/off |

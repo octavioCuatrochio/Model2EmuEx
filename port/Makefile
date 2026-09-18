@@ -5,7 +5,7 @@ CC       ?= gcc
 CXX      ?= g++
 CFLAGS   ?= -O2 -g
 CXXFLAGS ?= -O2 -g
-CFLAGS   += -std=c99 -D_DEFAULT_SOURCE -Wall -Wextra -MMD -MP
+CFLAGS   += -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -MMD -MP
 CXXFLAGS += -std=c++14 -Wall -MMD -MP
 BUILD    := build
 
@@ -19,10 +19,10 @@ OBJ = $(addprefix $(BUILD)/,$(CORE_C:.c=.o) $(M68K_C:.c=.o) $(CORE_CXX:.cpp=.o))
 all: $(BUILD)/m2emu $(BUILD)/m2run
 
 $(BUILD)/m2emu: $(BUILD)/sdl/m2emu.o $(BUILD)/m2/m2gl.o $(OBJ)
-	$(CXX) -o $@ $^ $(shell pkg-config --libs sdl2 glesv2) -lz -lm
+	$(CXX) $(LDFLAGS) -o $@ $^ $(shell pkg-config --libs sdl2 glesv2) -lz -lm
 
 $(BUILD)/m2run: $(BUILD)/m2/m2run.o $(BUILD)/m2/m2tiledump.o $(OBJ)
-	$(CXX) -o $@ $^ -lz -lm
+	$(CXX) $(LDFLAGS) -o $@ $^ -lz -lm
 
 $(BUILD)/sdl/m2emu.o: sdl/m2emu.c
 	@mkdir -p $(dir $@)

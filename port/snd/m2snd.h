@@ -7,6 +7,11 @@
  * Memory maps as the original (0x4ccbe0), I/O details as MAME's
  * segam1audio.cpp and model2.cpp. The 68000 is Musashi (the original's
  * A68K is x86 assembly). Output: 44.1 kHz stereo.
+ *
+ * Threads: m2snd_command may run on one thread (the emulation) while
+ * m2snd_render runs on another (the audio callback); commands go through a
+ * lock-free queue and reach the board at the next 16-sample slice. Every
+ * other call needs the render thread stopped (SDL_LockAudioDevice).
  */
 #ifndef M2SND_H
 #define M2SND_H
@@ -26,9 +31,10 @@ typedef struct m2_snd m2_snd;
 m2_snd *m2snd_create(const struct m2_board *b);
 void    m2snd_destroy(m2_snd *s);
 void    m2snd_reset(m2_snd *s);
-/* a byte from the i960 (board hook sound_command) */
+/* a byte from the i960 (board hook sound_command); never blocks */
 void    m2snd_command(m2_snd *s, uint8_t cmd);
-/* runs the sound board for `n` samples, writing interleaved stereo */
+/* delivers queued commands and runs the sound board for `n` samples,
+   writing interleaved stereo */
 void    m2snd_render(m2_snd *s, int16_t *out, int n);
 /* debugging: one-line state summary */
 void    m2snd_debug(m2_snd *s, char *buf, int size);

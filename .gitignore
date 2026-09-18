@@ -1,7 +1,7 @@
 # Ghidra database (binary, 20+ MB): regenerate from EMULATOR.EXE, see README.md
 ghidra_project/
 # build output
-port/build/
+port/build*/
 *.o
 *.d
 # tool logs and caches
