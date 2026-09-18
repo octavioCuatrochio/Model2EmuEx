@@ -1,0 +1,2347 @@
+00400000	MZ
+00400118	PE
+00400210	.text
+00400238	.rdata
+00400260	.data
+00400288	.rsrc
+004f9c30	QSUVWj
+004f9d00	QSUVWj
+0050a500	 deflate 1.2.2 Copyright 1995-2004 Jean-loup Gailly 
+0050a5b8	hello, hello!
+0050a5c8	hello
+0050b728	 inflate 1.2.2 Copyright 1995-2004 Mark Adler 
+0050c2b8	 unzip 0.22 Copyright 1998-2003 Gilles Vollant - http://www.winimage.com/zLibDll
+0050c310	 zip 0.22 Copyright 1998-2003 Gilles Vollant - http://www.winimage.com/zLibDll
+0050c998	Unknown exception
+0050c9b8	bad allocation
+0050c9c8	Visual C++ CRT: Not enough memory to complete call to strerror.
+0050ca08	CorExitProcess
+0050ca18	mscoree.dll
+0050ca40	cmd.exe
+0050ca48	COMSPEC
+0050cae8	am/pm
+0050caf0	LC_TIME
+0050caf8	LC_NUMERIC
+0050cb04	LC_MONETARY
+0050cb10	LC_CTYPE
+0050cb1c	LC_COLLATE
+0050cb28	LC_ALL
+0050cc04	runtime error 
+0050cc2c	TLOSS error\r\n
+0050cc48	SING error\r\n
+0050cc64	DOMAIN error\r\n
+0050cc88	R6033\r\n- Attempt to use MSIL code from this assembly during native code initialization\nThis indicates a bug in your application. It is most likely the result of calling an MSIL-compiled (/clr) function from a native constructor or from DllMain.\r\n
+0050ce78	R6032\r\n- not enough space for locale information\r\n
+0050cee0	R6031\r\n- Attempt to initialize the CRT more than once.\nThis indicates a bug in your application.\r\n
+0050cfa8	R6030\r\n- CRT not initialized\r\n
+0050cfe8	R6028\r\n- unable to initialize heap\r\n
+0050d038	R6027\r\n- not enough space for lowio initialization\r\n
+0050d0a8	R6026\r\n- not enough space for stdio initialization\r\n
+0050d118	R6025\r\n- pure virtual function call\r\n
+0050d168	R6024\r\n- not enough space for _onexit/atexit table\r\n
+0050d1d8	R6019\r\n- unable to open console device\r\n
+0050d230	R6018\r\n- unexpected heap error\r\n
+0050d278	R6017\r\n- unexpected multithread lock error\r\n
+0050d2d8	R6016\r\n- not enough space for thread data\r\n
+0050d330	R6010\r\n- abort() has been called\r\n
+0050d378	R6009\r\n- not enough space for environment\r\n
+0050d3d0	R6008\r\n- not enough space for arguments\r\n
+0050d428	R6002\r\n- floating point support not loaded\r\n
+0050d5c4	Runtime Error!\n\nProgram: 
+0050d5f8	(null)
+0050d668	UTF-8
+0050d670	UTF-16LE
+0050d67c	UNICODE
+0050d6a4	HH:mm:ss
+0050d6b8	dddd, MMMM dd, yyyy
+0050d6e0	MM/dd/yy
+0050d704	December
+0050d718	November
+0050d72c	October
+0050d73c	September
+0050d750	August
+0050d760	July
+0050d76c	June
+0050d778	April
+0050d784	March
+0050d790	February
+0050d7a4	January
+0050d814	Saturday
+0050d828	Friday
+0050d838	Thursday
+0050d84c	Wednesday
+0050d860	Tuesday
+0050d870	Monday
+0050d880	Sunday
+0050d8c8	HH:mm:ss
+0050d8d4	dddd, MMMM dd, yyyy
+0050d8e8	MM/dd/yy
+0050d8fc	December
+0050d908	November
+0050d914	October
+0050d91c	September
+0050d928	August
+0050d940	April
+0050d948	March
+0050d950	February
+0050d95c	January
+0050d994	Saturday
+0050d9a0	Friday
+0050d9a8	Thursday
+0050d9b4	Wednesday
+0050d9c0	Tuesday
+0050d9c8	Monday
+0050d9d0	Sunday
+0050d9f4	KERNEL32.DLL
+0050da10	FlsFree
+0050da18	FlsSetValue
+0050da24	FlsGetValue
+0050da30	FlsAlloc
+0050da40	Illegal byte sequence
+0050da58	Directory not empty
+0050da6c	Function not implemented
+0050da88	No locks available
+0050da9c	Filename too long
+0050dab0	Resource deadlock avoided
+0050dacc	Result too large
+0050dae0	Domain error
+0050daf0	Broken pipe
+0050dafc	Too many links
+0050db0c	Read-only file system
+0050db24	Invalid seek
+0050db34	No space left on device
+0050db4c	File too large
+0050db5c	Inappropriate I/O control operation
+0050db80	Too many open files
+0050db94	Too many open files in system
+0050dbb4	Invalid argument
+0050dbc8	Is a directory
+0050dbd8	Not a directory
+0050dbe8	No such device
+0050dbf8	Improper link
+0050dc08	File exists
+0050dc14	Resource device
+0050dc24	Unknown error
+0050dc34	Bad address
+0050dc40	Permission denied
+0050dc54	Not enough space
+0050dc68	Resource temporarily unavailable
+0050dc8c	No child processes
+0050dca0	Bad file descriptor
+0050dcb4	Exec format error
+0050dcc8	Arg list too long
+0050dcdc	No such device or address
+0050dcf8	Input/output error
+0050dd0c	Interrupted function call
+0050dd28	No such process
+0050dd38	No such file or directory
+0050dd54	Operation not permitted
+0050dd6c	No error
+0050dde0	exp10
+0050dde8	_nextafter
+0050de20	SunMonTueWedThuFriSat
+0050de38	JanFebMarAprMayJunJulAugSepOctNovDec
+0050e690	united-states
+0050e6a0	united-kingdom
+0050e6b0	trinidad & tobago
+0050e6c4	south-korea
+0050e6d0	south-africa
+0050e6e0	south korea
+0050e6ec	south africa
+0050e6fc	slovak
+0050e704	puerto-rico
+0050e710	pr-china
+0050e71c	pr china
+0050e72c	new-zealand
+0050e738	hong-kong
+0050e744	holland
+0050e74c	great britain
+0050e75c	england
+0050e76c	china
+0050e774	britain
+0050e77c	america
+0050e790	swiss
+0050e798	swedish-finland
+0050e7a8	spanish-venezuela
+0050e7bc	spanish-uruguay
+0050e7cc	spanish-puerto rico
+0050e7e0	spanish-peru
+0050e7f0	spanish-paraguay
+0050e804	spanish-panama
+0050e814	spanish-nicaragua
+0050e828	spanish-modern
+0050e838	spanish-mexican
+0050e848	spanish-honduras
+0050e85c	spanish-guatemala
+0050e870	spanish-el salvador
+0050e884	spanish-ecuador
+0050e894	spanish-dominican republic
+0050e8b0	spanish-costa rica
+0050e8c4	spanish-colombia
+0050e8d8	spanish-chile
+0050e8e8	spanish-bolivia
+0050e8f8	spanish-argentina
+0050e90c	portuguese-brazilian
+0050e924	norwegian-nynorsk
+0050e938	norwegian-bokmal
+0050e94c	norwegian
+0050e958	italian-swiss
+0050e968	irish-english
+0050e978	german-swiss
+0050e988	german-luxembourg
+0050e99c	german-lichtenstein
+0050e9b0	german-austrian
+0050e9c0	french-swiss
+0050e9d0	french-luxembourg
+0050e9e4	french-canadian
+0050e9f4	french-belgian
+0050ea04	english-usa
+0050ea10	english-us
+0050ea1c	english-uk
+0050ea28	english-trinidad y tobago
+0050ea44	english-south africa
+0050ea5c	english-nz
+0050ea68	english-jamaica
+0050ea78	english-ire
+0050ea84	english-caribbean
+0050ea98	english-can
+0050eaa4	english-belize
+0050eab4	english-aus
+0050eac0	english-american
+0050ead4	dutch-belgian
+0050eae4	chinese-traditional
+0050eaf8	chinese-singapore
+0050eb0c	chinese-simplified
+0050eb20	chinese-hongkong
+0050eb34	chinese
+0050eb44	canadian
+0050eb50	belgian
+0050eb58	australian
+0050eb64	american-english
+0050eb78	american english
+0050eb8c	american
+0050ee74	Norwegian-Nynorsk
+0050ef30	GetProcessWindowStation
+0050ef48	GetUserObjectInformationW
+0050ef64	GetLastActivePopup
+0050ef78	GetActiveWindow
+0050ef88	MessageBoxW
+0050ef94	USER32.DLL
+0050efac	 Complete Object Locator'
+0050efc8	 Class Hierarchy Descriptor'
+0050efe8	 Base Class Array'
+0050effc	 Base Class Descriptor at (
+0050f018	 Type Descriptor'
+0050f02c	`local static thread guard'
+0050f048	`managed vector copy constructor iterator'
+0050f074	`vector vbase copy constructor iterator'
+0050f0a0	`vector copy constructor iterator'
+0050f0c4	`dynamic atexit destructor for '
+0050f0e8	`dynamic initializer for '
+0050f104	`eh vector vbase copy constructor iterator'
+0050f130	`eh vector copy constructor iterator'
+0050f158	`managed vector destructor iterator'
+0050f180	`managed vector constructor iterator'
+0050f1a8	`placement delete[] closure'
+0050f1c8	`placement delete closure'
+0050f1e4	`omni callsig'
+0050f1f4	 delete[]
+0050f200	 new[]
+0050f208	`local vftable constructor closure'
+0050f22c	`local vftable'
+0050f23c	`RTTI
+0050f248	`udt returning'
+0050f258	`copy constructor closure'
+0050f274	`eh vector vbase constructor iterator'
+0050f29c	`eh vector destructor iterator'
+0050f2bc	`eh vector constructor iterator'
+0050f2e0	`virtual displacement map'
+0050f2fc	`vector vbase constructor iterator'
+0050f320	`vector destructor iterator'
+0050f340	`vector constructor iterator'
+0050f360	`scalar deleting destructor'
+0050f380	`default constructor closure'
+0050f3a0	`vector deleting destructor'
+0050f3c0	`vbase destructor'
+0050f3d4	`string'
+0050f3e0	`local static guard'
+0050f3f8	`typeof'
+0050f404	`vcall'
+0050f40c	`vbtable'
+0050f418	`vftable'
+0050f48c	operator
+0050f4a8	 delete
+0050f4b8	__unaligned
+0050f4c4	__restrict
+0050f4d0	__ptr64
+0050f4d8	__eabi
+0050f4e0	__clrcall
+0050f4ec	__fastcall
+0050f4f8	__thiscall
+0050f504	__stdcall
+0050f510	__pascal
+0050f51c	__cdecl
+0050f524	__based(
+0050f714	e+000
+0050f71c	SystemRoot
+0050f728	CONOUT$
+0050f738	1#QNAN
+0050f740	1#INF
+0050f748	1#IND
+0050f750	1#SNAN
+0050f7bc	Dir%d
+0050f7c4	.\Emulator.ini
+0050f7dc	RomDirs
+0050f7e4	%s\%s.zip
+0050f7f0	%s\%s\%s
+0050f800	Unable to load. FileName: %s Size: %d CRC: %X
+0050f830	There are missing files. Load aborted
+0050f858	.\STATES\%s%d.sta
+0050f86c	.\STATES
+0050f878	list<T> too long
+0050f88c	FullMode
+0050f898	Renderer
+0050f8a4	Sound
+0050f8ac	AutoFull
+0050f8b8	Filter
+0050f8c8	Input
+0050f8d4	Press a button or key
+0050f8f4	Romset
+0050f8fc	System
+0050f904	About...
+0050f910	SEGA Model 2 Emulator (MultiCPU). v1.1a.\n(C) 2014 by ElSemi.\nnebula.emulatronia.com
+0050f964	http://nebula.emulatronia.com
+0050f98c	Frameskip
+0050f998	MYWIN
+0050f9a0	Model 2 Emulator
+0050f9b4	Unable to find driver for %s
+0050f9d4	Unable to find machine %s
+0050f9f0	Warning
+0050f9f8	XInput
+0050fa00	Video_DrawText
+0050fa10	Video_CreateFont
+0050fa24	Video_ReleaseFont
+0050fa38	Video_DrawTextWithFont
+0050fa50	Video_CreateSurfaceFromFile
+0050fa6c	Video_DrawSurface
+0050fa80	Video_ReleaseSurface
+0050fa98	Video_GetScreenSize
+0050faac	Romset_ReadByte
+0050fabc	Romset_ReadWord
+0050facc	Romset_ReadDWord
+0050fae0	Romset_PatchByte
+0050faf4	Romset_PatchWord
+0050fb08	Romset_PatchDWord
+0050fb1c	Input_IsKeyPressed
+0050fb30	Unable to initialize video subsystem
+0050fb58	Unable to initialize audio subsystem
+0050fb80	Unable to initialize input subsystem
+0050fba8	Unable to initialize emulation
+0050fbc8	FullScreenWidth
+0050fbd8	FullScreenHeight
+0050fbf0	.\emulator.ini
+0050fc08	FPS: %.02lf (%.02lfms) %s%s A %.02lf F %d
+0050fc34	%s: %.02lfms
+0050fc44	invalid map/set<T> iterator
+0050fc60	map/set<T> too long
+0050fc94	UseRawInput
+0050fca0	USER32.DLL
+0050fcac	RegisterRawInputDevices
+0050fcc4	GetRawInputDeviceList
+0050fcdc	GetRawInputDeviceInfoA
+0050fcf4	GetRawInputData
+0050fd08	RAWINPUT is not available in your system (WinXP or higher required). Reverting to DirectInput\n
+0050fd68	EnableFF
+0050fd74	RDP_MOU
+0050fd7c	RawDevP1
+0050fd88	RawDevP2
+0050fd94	Savestate %d selected
+0050fdac	State %d Loaded
+0050fdbc	Loading Savestate %d. Confirm...
+0050fde0	State Saved
+0050fdec	Saving to Savestate %d. Confirm...
+0050fe10	.\SHOTS\%s%03d.bmp
+0050fe24	Frameskip %d
+0050fe34	Frameskip Auto
+0050fe48	 (Inv)
+0050fe50	Analog Joy %d %s%s
+0050fe6c	Right
+0050fe80	Left 2
+0050fe88	Right 2
+0050fe98	Down 2
+0050fea0	Left 3
+0050fea8	Right 3
+0050feb8	Down 3
+0050fec0	Left 4
+0050fec8	Right 4
+0050fed8	Down 4
+0050fee0	Joy %d Button %d
+0050fef4	Joy %d %s
+0050ff00	.\CFG
+0050ff08	.\CFG\%s.input
+0050ff1c	FE_CENTERING_Coefficient
+0050ff38	FE_CENTERING_Saturation
+0050ff50	FE_CENTERING_Deadband
+0050ff6c	FE_CENTERING_Gain
+0050ff80	FE_CLUTCH_Coefficient
+0050ff98	FE_CLUTCH_Gain
+0050ffa8	FE_RIGHT_Magnitude
+0050ffbc	FE_RIGHT_Gain
+0050ffcc	FE_LEFT_Magnitude
+0050ffe0	FE_LEFT_Gain
+0050fff0	FE_UNCENTERING_Magnitude
+0051000c	FE_UNCENTERING_Offset
+00510024	FE_UNCENTERING_Phase
+0051003c	FE_UNCENTERING_Period
+00510054	FE_UNCENTERING_Gain
+005100bc	xinput1_3.dll
+005100d0	XINPUT is not installed. Install latest DirectX or disable XINPUT. Emulator will crash\n
+00510128	XInputGetState
+00510138	XInputSetState
+00510148	XInputGetCapabilities
+00510160	Analog Joy %d %s %s
+00510184	L.Shoulder
+00510190	R.Shoulder
+0051019c	L.Trig
+005101a4	R.Trig
+005101ac	L.Stick
+005101b4	R.Stick
+005101bc	Start
+005101cc	Gamepad %d
+005101d8	D-Pad Horizontal
+005101ec	D-Pad Vertical
+005101fc	Left Stick Horizontal
+00510214	Left Stick Vertical
+00510228	Right Stick Horizontal
+00510240	Right Stick Vertical
+00510258	Left Trigger
+00510268	Right Trigger
+005102cc	Script compiling error
+005102e4	Options
+005102ec	values
+005102fc	runfunc
+00510304	changefunc
+00510310	SCRIPTS\
+00510328	LUA_PATH=.\?.lua;!\lua\?.lua;!\lua\?\init.lua;!\?.lua;!\?\init.lua;.\SCRIPTS\?.lua;..\SCRIPTS\?.lua
+005103a8	value
+005103b8	PostDraw
+005103c4	Script PostDraw error
+005103dc	Frame
+005103e4	Script Frame error
+005103f8	Reset
+00510400	Script Reset error
+0051041c	Script Init error
+00510434	invalid string position
+0051044c	string too long
+00510480	struct VS_IN                                                 \n{                                                            \n   float4   Pos             : POSITION;                      \n   float2   Tex             : TEXCOORD0;                     \n};                                                           \n                                                             \nstruct VS_OUT                                                \n{                                                            \n   float4 Position        : POSITION;                        \n   float2 TexCoord0       : TEXCOORD0;                       \n};                                                           \n                                                             \nuniform float4 BlendVal    : register(c1);                   \n                                                             \nsampler        Texture : register(s0);					      \nsampler        Texture2 : register(s1);					      \n                                                             \nVS_OUT VShader( VS_IN In )                              \n{                                                            \n   VS_OUT Out;                                               \n   Out.Position.x  = (In.Pos.x);						          \n   Out.Position.y  = (In.Pos.y);								  \n   Out.Position.z  = (In.Pos.z);                                \n   Out.Position.w  = (In.Pos.w);                                \n   Out.TexCoord0.x = In.Tex.x;				                  \n   Out.TexCoord0.y = In.Tex.y;							      \n   return Out;                                               \n}                                                            \n                                                             \nfloat4 PShader( VS_OUT In ) : COLOR0                     \n{                                                            \n    float4 T = tex2D( Texture, In.TexCoord0 );               \n    return T;					                              \n}                                                            \nfloat4 PShader2( VS_OUT In ) : COLOR0                     \n{                                                            \n    float4 T = tex2D( Texture, In.TexCoord0 );               \n    float4 T2 = tex2D( Texture2, In.TexCoord0 );               \n	 if(T.a!=T2.a)\n		T=T2;\n	 T.a=T2.a;\n    return T;					                              \n}                                                            \n
+00510de8	WideScreenWindow
+00510dfc	Unable to find appropiate zbuffer format
+00510e30	ForceSync
+00510e3c	SoftwareVertexProcessing
+00510e58	FAILED %X. D3DFMT %d DEPTH %d
+00510e78	ForceManaged
+00510e88	Arial
+00510e90	DrawCross
+00510e9c	.\SHOTS
+00510ea4	ps.2.0
+00510eac	PShader
+00510eb4	Information
+00510ec0	Nothing to configure
+00510ed8	NVDATA
+00512100	$Lua: Lua 5.1.4 Copyright (C) 1994-2008 Lua.org, PUC-Rio $\n$Authors: R. Ierusalimschy, L. H. de Figueiredo & W. Celes $\n$URL: www.lua.org $\n
+00515c30	no calling environment
+00515c48	no value
+00515c58	bad argument #%d (%s)
+00515c7c	calling '%s' on bad self (%s)
+00515c9c	bad argument #%d to '%s' (%s)
+00515cbc	%s expected, got %s
+00515cd4	%s:%d: 
+00515cdc	invalid option '%s'
+00515cf0	stack overflow (%s)
+00515d04	value expected
+00515d14	_LOADED
+00515d1c	name conflict for module '%s'
+00515d40	cannot %s %s: %s
+00515d54	=stdin
+00515d64	reopen
+00515d74	PANIC: unprotected error in call to Lua API (%s)\n
+00515da8	yield
+00515db8	status
+00515dc0	resume
+00515dc8	create
+00515dd8	normal
+00515de0	suspended
+00515dec	running
+00515df4	xpcall
+00515dfc	unpack
+00515e0c	tonumber
+00515e18	setmetatable
+00515e28	setfenv
+00515e30	select
+00515e38	rawset
+00515e40	rawget
+00515e48	rawequal
+00515e54	print
+00515e5c	pcall
+00515e6c	loadstring
+00515e80	loadfile
+00515e8c	getmetatable
+00515e9c	getfenv
+00515ea4	gcinfo
+00515eac	error
+00515eb4	dofile
+00515ebc	collectgarbage
+00515ecc	assert
+00515ed4	setstepmul
+00515ee0	setpause
+00515ef4	count
+00515efc	collect
+00515f04	restart
+00515f14	tostring
+00515f20	'tostring' must return a string to 'print'
+00515f50	base out of range
+00515f64	__metatable
+00515f70	nil or table expected
+00515f88	cannot change a protected metatable
+00515fac	level must be non-negative
+00515fc8	invalid level
+00515fdc	no function environment for tail call at level %d
+00516010	'setfenv' cannot change environment of given object
+00516044	too many nested functions
+00516060	reader function must return a string
+00516088	=(load)
+00516090	assertion failed!
+005160a4	too many results to unpack
+005160c0	index out of range
+005160d4	__tostring
+005160e8	false
+005160f4	%s: %p
+005160fc	boolean or proxy expected
+00516118	coroutine expected
+0051612c	too many arguments to resume
+0051614c	cannot resume %s coroutine
+00516168	too many results to resume
+00516184	Lua function expected
+005161a0	Lua 5.1
+005161a8	_VERSION
+005161b4	ipairs
+005161bc	pairs
+005161c8	__mode
+005161d0	newproxy
+005161dc	coroutine
+005161e8	control structure too long
+00516204	function or expression too complex
+00516228	constant table overflow
+00516240	code size overflow
+00516254	traceback
+00516260	setupvalue
+0051626c	setlocal
+00516278	sethook
+00516280	getupvalue
+0051628c	getregistry
+00516298	getlocal
+005162a4	getinfo
+005162ac	gethook
+005162b4	debug
+005162bc	tail return
+005162d0	return
+005162e0	flnSu
+005162ec	function or level expected
+00516308	invalid option
+00516318	source
+00516320	short_src
+0051632c	linedefined
+00516338	lastlinedefined
+00516350	currentline
+00516364	namewhat
+00516370	activelines
+00516384	level out of range
+00516398	external hook
+005163a8	lua_debug> 
+005163b4	cont\n
+005163bc	=(debug command)
+005163d0	stack traceback:
+005163e4	\n	...
+005163fc	 in function '%s'
+00516410	 in main chunk
+00516424	 in function <%s:%d>
+0051643c	(*temporary)
+0051646c	=(tail call)
+0051647c	local
+00516484	global
+0051648c	field
+00516494	upvalue
+0051649c	attempt to %s %s '%s' (a %s value)
+005164c0	attempt to %s a %s value
+005164dc	concatenate
+005164e8	perform arithmetic on
+00516500	attempt to compare two %s values
+00516524	attempt to compare %s with %s
+00516544	%s:%d: %s
+00516550	not enough memory
+00516564	error in error handling
+0051657c	stack overflow
+0051658c	C stack overflow
+005165a0	cannot resume non-suspended coroutine
+005165c8	attempt to yield across metamethod/C-call boundary
+00516604	string
+00516614	table
+0051661c	package
+0051662c	setvbuf
+0051663c	write
+00516644	tmpfile
+0051664c	popen
+00516654	lines
+0051665c	flush
+00516664	close
+00516684	output
+0051668c	input
+00516694	%s: %s
+0051669c	FILE*
+005166a4	closed file
+005166b8	attempt to use a closed file
+005166d8	cannot close standard file
+005166f4	__close
+005166fc	file (closed)
+0051670c	file (%p)
+00516718	standard %s file is closed
+0051673c	too many arguments
+00516750	invalid format
+00516760	file is already closed
+00516778	%.14g
+00516788	stdin
+00516790	stdout
+00516798	stderr
+005167a0	<eof>
+005167a8	<string>
+005167b4	<name>
+005167bc	<number>
+005167e0	while
+005167e8	until
+005167f8	repeat
+00516810	function
+00516834	break
+00516840	lexical element too long
+0051685c	char(%d)
+0051686c	%s near '%s'
+0051687c	chunk has too many lines
+00516898	malformed number
+005168b4	unfinished long string
+005168cc	unfinished long comment
+005168e4	nesting of [[...]] is deprecated
+00516908	unfinished string
+0051691c	escape sequence too large
+00516938	invalid long string delimiter
+0051697c	randomseed
+00516988	random
+005169ac	log10
+005169b4	ldexp
+005169bc	frexp
+005169cc	floor
+005169f8	atan2
+00516a14	interval is empty
+00516a28	wrong number of arguments
+00516a54	memory allocation error: block too big
+00516a7c	require
+00516a84	module
+00516a8c	seeall
+00516a94	loadlib
+00516a9c	unable to get ModuleFileName
+00516ac0	system error %d\n
+00516ad4	LOADLIB: 
+00516ae8	_LOADLIB
+00516b04	'package.%s' must be a string
+00516b24	\n	no file '%s'
+00516b34	error loading module '%s' from file '%s':\n	%s
+00516b74	luaopen_%s
+00516b80	cpath
+00516b88	\n	no module '%s' in file '%s'
+00516ba8	preload
+00516bb0	'package.preload' must be a table
+00516bd4	\n	no field package.preload['%s']
+00516bf8	loop or previous error loading module '%s'
+00516c24	loaders
+00516c2c	'package.loaders' must be a table
+00516c50	module '%s' not found:%s
+00516c6c	'module' not called from a Lua function
+00516c98	_NAME
+00516ca0	_PACKAGE
+00516cb8	.\?.lua;!\lua\?.lua;!\lua\?\init.lua;!\?.lua;!\?\init.lua
+00516cf4	LUA_PATH
+00516d00	.\?.dll;!\?.dll;!\loadall.dll
+00516d20	LUA_CPATH
+00516d2c	\\n;\n?\n!\n-
+00516d38	config
+00516d40	loaded
+00516d48	(null)
+00516d5c	[string "
+00516d6c	VARARG
+00516d74	CLOSURE
+00516d7c	CLOSE
+00516d84	SETLIST
+00516d8c	TFORLOOP
+00516d98	FORPREP
+00516da0	FORLOOP
+00516da8	RETURN
+00516db0	TAILCALL
+00516dc4	TESTSET
+00516de4	CONCAT
+00516e14	NEWTABLE
+00516e20	SETTABLE
+00516e2c	SETUPVAL
+00516e38	SETGLOBAL
+00516e44	GETTABLE
+00516e50	GETGLOBAL
+00516e5c	GETUPVAL
+00516e68	LOADNIL
+00516e70	LOADBOOL
+00516e7c	LOADK
+00516e8c	tmpname
+00516e94	setlocale
+00516ea0	rename
+00516ea8	remove
+00516eb0	getenv
+00516ec0	execute
+00516ec8	difftime
+00516edc	clock
+00516eec	numeric
+00516ef4	monetary
+00516f00	ctype
+00516f08	collate
+00516f14	unable to generate a unique filename
+00516f3c	field '%s' missing in date table
+00516f74	month
+00516f94	isdst
+00516f9c	'%s' expected
+00516fac	main function has more than %d %s
+00516fd0	function at line %d has more than %d %s
+00516ff8	'%s' expected (to close '%s' at line %d)
+00517024	too many local variables
+00517040	local variables
+00517050	upvalues
+0051705c	chunk has too many syntax levels
+00517080	items in a constructor
+0051709c	<name> or '...' expected
+005170c0	ambiguous syntax (function call x new statement)
+005170f4	function arguments expected
+00517110	unexpected symbol
+00517124	cannot use '...' outside a vararg function
+00517150	syntax error
+00517160	variables in assignment
+00517178	no loop to break
+0051718c	(for index)
+00517198	(for limit)
+005171a4	(for step)
+005171b0	(for generator)
+005171c0	(for state)
+005171cc	(for control)
+005171dc	'=' or 'in' expected
+005171f4	upper
+00517200	reverse
+0051720c	match
+00517214	lower
+00517228	gmatch
+00517230	gfind
+00517238	format
+00517260	string slice too long
+00517278	invalid value
+00517288	unable to dump given function
+005172a8	invalid capture index
+005172c0	invalid pattern capture
+005172d8	malformed pattern (ends with '%%')
+005172fc	malformed pattern (missing ']')
+0051731c	unbalanced pattern
+00517330	too many captures
+00517344	missing '[' after '%%f' in pattern
+00517368	unfinished capture
+0051737c	^$*+?.([%-
+00517388	'string.gfind' was renamed to 'string.gmatch'
+005173b8	invalid replacement value (a %s)
+005173dc	string/function/table expected
+00517408	-+ #0
+00517410	invalid format (repeated flags)
+00517430	invalid format (width or precision too long)
+00517460	invalid option '%%%c' to 'format'
+00517484	invalid key to 'next'
+0051749c	table overflow
+005174ac	table index is nil
+005174c0	table index is NaN
+005174e4	insert
+005174fc	foreachi
+00517508	foreach
+00517510	concat
+00517518	'setn' is obsolete
+0051752c	wrong number of arguments to 'insert'
+00517554	invalid value (%s) at index %d in table for 'concat'
+0051758c	invalid order function for sorting
+005175b0	__call
+005175b8	__concat
+005175d4	__len
+005175dc	__unm
+005175e4	__pow
+005175ec	__mod
+005175f4	__div
+005175fc	__mul
+00517604	__sub
+0051760c	__add
+0051761c	__newindex
+00517628	upval
+00517630	proto
+00517638	thread
+00517640	number
+00517648	userdata
+00517654	boolean
+0051765c	%s: %s in precompiled chunk
+00517678	unexpected end
+00517688	bad integer
+00517694	bad constant
+005176a4	code too deep
+005176b4	bad code
+005176c0	bad header
+005176cc	binary string
+005176e0	index
+005176e8	loop in gettable
+005176fc	loop in settable
+00517710	string length overflow
+00517728	get length of
+00517738	'for' initial value must be a number
+00517760	'for' limit must be a number
+00517780	'for' step must be a number
+005177a0	Player 1 Up
+005177ac	Player 1 Down
+005177bc	Player 1 Left
+005177cc	Player 1 Right
+005177dc	Player 1 Button 1
+005177f0	Player 1 Button 2
+00517804	Player 1 Button 3
+00517818	Player 1 Button 4
+0051782c	Player 1 Start
+0051783c	Player 1 Coin
+0051784c	Player 2 Up
+00517858	Player 2 Down
+00517868	Player 2 Left
+00517878	Player 2 Right
+00517888	Player 2 Button 1
+0051789c	Player 2 Button 2
+005178b0	Player 2 Button 3
+005178c4	Player 2 Button 4
+005178d8	Player 2 Start
+005178e8	Player 2 Coin
+005178f8	Service
+00517908	Show render stats
+0051791c	Toggle tilemap render
+00517934	Cycle Tilemap update rate
+00517950	Left Stick Up
+00517960	Left Stick Down
+00517970	Left Stick Left
+00517980	Left Stick Right
+00517994	Left Stick Trigger
+005179a8	Left Stick Button
+005179bc	Right Stick Up
+005179cc	Right Stick Down
+005179e0	Right Stick Left
+005179f4	Right Stick Right
+00517a08	Right Stick Trigger
+00517a1c	Right Stick Button
+00517a30	Player 1 Trigger
+00517a44	Player 1 Missile
+00517a58	Player 2 Trigger
+00517a6c	Player 2 Missile
+00517a80	Steering
+00517a8c	Accelerate
+00517a98	Brake
+00517aa0	Button 1
+00517aac	Button 2
+00517ab8	Button 3
+00517ac4	Button 4
+00517ad8	Curving
+00517ae0	Slide
+00517ae8	Jump Front
+00517af4	Jump Tail
+00517b00	Select Left
+00517b0c	Select Right
+00517b1c	Swing Left
+00517b28	Swing Right
+00517b34	Incl Left
+00517b40	Incl Right
+00517b4c	Inclining
+00517b58	Swing
+00517b60	Zoom Out
+00517b6c	Zoom In
+00517b74	Select 1
+00517b80	Select 2
+00517b8c	Select 3
+00517b98	Roll Left
+00517ba4	Roll Right
+00517bb0	Handle Left
+00517bbc	Handle Right
+00517bcc	Throttle
+00517bd8	Handle
+00517bf0	Select Up
+00517bfc	Select Down
+00517c08	Slide Left
+00517c14	Slide Right
+00517c24	Pitch Left
+00517c30	Pitch Right
+00517c3c	Steer Left
+00517c48	Steer Right
+00517c54	Turret Up
+00517c60	Turret Down
+00517c6c	Accel +
+00517c74	Accel -
+00517c7c	Turret
+00517c84	Accelerator
+00517c90	Shift
+00517c98	Machine Gun
+00517ca4	Cannon
+00517cac	VR1 (Blue)
+00517cb8	VR2 (Green)
+00517cc4	VR3 (Red)
+00517cd0	Coin 2
+00517cd8	Shift 1
+00517ce0	Shift 2
+00517ce8	Shift 3
+00517cf0	Shift 4
+00517cf8	Shift Neutral
+00517d28	Coin 1
+00517d30	Test 2
+00517d38	Horizontal
+00517d44	Vertical
+00517d50	Machine gun
+00517d5c	Missile
+00517d64	View Change
+00517d70	Shift Up
+00517d7c	Shift Down
+00517d9c	Punch
+00517da4	Player 1 Bat
+00517db4	Player 1 Bat +
+00517dc4	Player 1 Bat -
+00517dd4	Player 2 Bat
+00517de4	model2
+00517dec	Model2 Board Roms
+00517e00	Model 2
+00517e08	opr-14742a.45
+00517e18	opr-14743a.46
+00517e28	opr-14744.58
+00517e38	opr-14745.59
+00517e48	opr-14746.62
+00517e58	opr-14747.63
+00517e68	mpr-16310.15
+00517e78	mpr-16311.16
+00517e88	mpr-16312.14
+00517e98	zerogun
+00517ea0	Zero Gunner (Model 2B)
+00517eb8	Model 2B
+00517ec4	epr-20439.15
+00517ed4	epr-20440.16
+00517ee4	mpr-20296.11
+00517ef4	mpr-20297.12
+00517f04	mpr-20294.9
+00517f10	mpr-20295.10
+00517f20	mpr-20298.17
+00517f30	mpr-20299.21
+00517f40	mpr-20301.27
+00517f50	mpr-20300.25
+00517f60	epr-20302.31
+00517f70	mpr-20303.32
+00517f80	mpr-20304.33
+00517f90	zerogunj
+00517f9c	Zero Gunner (Jap, Model 2B)
+00517fb8	epr-20290.15
+00517fc8	epr-20291.16
+00517fd8	zeroguna
+00517fe4	Zero Gunner (Model 2A)
+00517ffc	Model 2A
+00518008	epr-20437.12
+00518018	epr-20438.13
+00518028	zerogunaj
+00518034	Zero Gunner (Jap, Model 2A)
+00518050	epr-20288.12
+00518060	epr-20289.13
+00518070	gunblade
+0051807c	Gunblade NY
+00518088	epr-18988a.15
+00518098	epr-18989a.16
+005180a8	mpr-18974.11
+005180b8	mpr-18975.12
+005180c8	mpr-18976.9
+005180d4	mpr-18977.10
+005180e4	mpr-18986.29
+005180f4	mpr-18987.30
+00518104	mpr-18980.17
+00518114	mpr-18981.21
+00518124	mpr-18982.18
+00518134	mpr-18983.22
+00518144	mpr-18985.27
+00518154	mpr-18984.25
+00518164	epr-18990.31
+00518174	mpr-18978.32
+00518184	mpr-18979.34
+00518194	dynamcop
+005181a0	Dynamite Cop (Model 2A)
+005181b8	epr-20930.12
+005181c8	epr-20931.13
+005181d8	epr-20932.14
+005181e8	epr-20933.15
+005181f8	mpr-20797.10
+00518208	mpr-20798.11
+00518218	mpr-20795.8
+00518224	mpr-20796.9
+00518230	mpr-20793.6
+0051823c	mpr-20794.7
+00518248	mpr-20791.4
+00518254	mpr-20792.5
+00518260	mpr-20799.16
+00518270	mpr-20803.20
+00518280	mpr-20800.17
+00518290	mpr-20804.21
+005182a0	mpr-20801.18
+005182b0	mpr-20805.22
+005182c0	mpr-20802.19
+005182d0	mpr-20806.23
+005182e0	mpr-20809.25
+005182f0	mpr-20807.24
+00518300	mpr-20810.27
+00518310	mpr-20808.26
+00518320	epr-20811.30
+00518330	mpr-20812.31
+00518340	mpr-20813.32
+00518350	mpr-20814.36
+00518360	mpr-20815.37
+00518370	dyndeka2
+0051837c	Dynamite Deka 2 (Model 2A)
+00518398	epr-20922.12
+005183a8	epr-20923.13
+005183b8	dynmcopb
+005183c4	Dynamite Cop (Model 2B)
+005183dc	progrom0.15
+005183e8	progrom1.16
+005183f4	dynmcopc
+00518400	Dynamite Cop (Model 2C)
+00518418	Model 2C
+00518424	epr-20952.15
+00518434	epr-20953.16
+00518444	dyndek2b
+00518450	Dynamite Deka 2 (Model 2B)
+0051846c	epr-20936.15
+0051847c	epr-20937.16
+0051848c	schamp
+00518494	Sonic Championship
+005184a8	epr-19141.15
+005184b8	epr-19142.16
+005184c8	mpr-19007.11
+005184d8	mpr-19008.12
+005184e8	mpr-19005.9
+005184f4	mpr-19006.10
+00518504	epr-19143.7
+00518510	epr-19144.8
+0051851c	mpr-19015.29
+0051852c	mpr-19016.30
+0051853c	mpr-19009.17
+0051854c	mpr-19012.21
+0051855c	mpr-19010.18
+0051856c	mpr-19013.22
+0051857c	mpr-19019.27
+0051858c	mpr-19017.25
+0051859c	mpr-19020.28
+005185ac	mpr-19018.26
+005185bc	epr-19021.31
+005185cc	mpr-19022.32
+005185dc	mpr-19023.33
+005185ec	mpr-19024.34
+005185fc	mpr-19025.35
+0051860c	sfight
+00518614	Sonic The Fighters
+00518628	epr-19001.15
+00518638	epr-19002.16
+00518648	epr-19003.7
+00518654	epr-19004.8
+00518660	rchase2
+00518668	Rail Chase 2
+00518678	epr-18045a.15
+00518688	epr-18046a.16
+00518698	epr-18074a.13
+005186a8	epr-18075a.14
+005186b8	mpr-18037.11
+005186c8	mpr-18038.12
+005186d8	mpr-18039.9
+005186e4	mpr-18040.10
+005186f4	mpr-18041.7
+00518700	mpr-18042.8
+0051870c	mpr-18043.5
+00518718	mpr-18044.6
+00518724	mpr-18031.17
+00518734	mpr-18032.21
+00518744	mpr-18033.18
+00518754	mpr-18034.22
+00518764	mpr-18035.27
+00518774	mpr-18036.25
+00518784	epr-18047.31
+00518794	mpr-18029.32
+005187a4	mpr-18030.34
+005187b4	Sega Touring Car Championship
+005187d4	epr-19570.15
+005187e4	epr-19571.16
+005187f4	mpr-19257.11
+00518804	mpr-19258.12
+00518814	epr-19270.9
+00518820	epr-19271.10
+00518830	mpr-19255.29
+00518840	mpr-19256.30
+00518850	mpr-19251.17
+00518860	mpr-19252.21
+00518870	epr-19266.18
+00518880	epr-19267.22
+00518890	mpr-19254.27
+005188a0	mpr-19253.25
+005188b0	epr-19269.28
+005188c0	epr-19268.26
+005188d0	epr-19274.31
+005188e0	epr-19275.2s
+005188f0	epr-18643a.7
+00518900	mpr-19259.32
+00518910	mpr-19261.34
+00518920	mpr-19262.57s
+00518930	mpr-19263.58s
+00518940	mpr-19264.59s
+00518950	mpr-19265.60s
+00518960	stcca
+00518968	Sega Touring Car Championship (Rev A)
+00518990	epr-19272a.15
+005189a0	epr-19273a.16
+005189b0	stccb
+005189b8	Sega Touring Car Championship (Rev B)
+005189e0	epr-19272b.15
+005189f0	epr-19273b.16
+00518a08	House of the Dead
+00518a1c	epr-19696.15
+00518a2c	epr-19697.16
+00518a3c	epr-19694.13
+00518a4c	epr-19695.14
+00518a5c	mpr-19704.11
+00518a6c	mpr-19705.12
+00518a7c	mpr-19702.9
+00518a88	mpr-19703.10
+00518a98	mpr-19700.7
+00518aa4	mpr-19701.8
+00518ab0	epr-19698.5
+00518abc	epr-19699.6
+00518ac8	epr-19707.29
+00518ad8	epr-19706.30
+00518ae8	mpr-19715.17
+00518af8	mpr-19711.21
+00518b08	mpr-19714.18
+00518b18	mpr-19710.22
+00518b28	mpr-19713.19
+00518b38	mpr-19709.23
+00518b48	mpr-19712.20
+00518b58	mpr-19708.24
+00518b68	mpr-19718.27
+00518b78	mpr-19716.25
+00518b88	mpr-19719.28
+00518b98	mpr-19717.26
+00518ba8	epr-19720.31
+00518bb8	mpr-19721.32
+00518bc8	mpr-19722.34
+00518bd8	lastbrnxj
+00518be4	Last Bronx (Jap, Rev A)
+00518bfc	lastbrnx
+00518c08	epr-19046a.15
+00518c18	epr-19047a.16
+00518c28	mpr-19050.11
+00518c38	mpr-19051.12
+00518c48	mpr-19048.9
+00518c54	mpr-19049.10
+00518c64	mpr-19052.17
+00518c74	mpr-19053.21
+00518c84	mpr-19055.27
+00518c94	mpr-19054.25
+00518ca4	mpr-19056.31
+00518cb4	mpr-19057.32
+00518cc4	mpr-19058.34
+00518cd4	lastbrnxu
+00518ce0	Last Bronx (USA, Rev A)
+00518cf8	epr-19059a.15
+00518d08	epr-19060a.16
+00518d18	Last Bronx (Export, Rev A)
+00518d34	epr-19061a.15
+00518d44	epr-19062a.16
+00518d54	pltkidsa
+00518d60	Pilot Kids (Model 2A)
+00518d78	pltkids
+00518d80	epr-21281.pr0
+00518d90	epr-21282.pr1
+00518da0	mpr-21262.da0
+00518db0	mpr-21263.da1
+00518dc0	mpr-21264.tp0
+00518dd0	mpr-21268.tp1
+00518de0	mpr-21265.tp2
+00518df0	mpr-21269.tp3
+00518e00	mpr-21266.tp4
+00518e10	mpr-21270.tp5
+00518e20	mpr-21267.tp6
+00518e30	mpr-21271.tp7
+00518e40	mpr-21274.tx1
+00518e50	mpr-21272.tx0
+00518e60	mpr-21275.tx3
+00518e70	mpr-21273.tx2
+00518e80	epr-21276.sd0
+00518e90	mpr-21277.sd1
+00518ea0	mpr-21278.sd2
+00518eb0	mpr-21279.sd3
+00518ec0	mpr-21280.sd4
+00518ed0	Pilot Kids (Model 2B)
+00518ee8	epr-21285a.15
+00518ef8	epr-21286a.16
+00518f08	indy500
+00518f10	Indianapolis 500 (Rev A, Twin, Newer rev)
+00518f3c	epr-18598a.15
+00518f4c	epr-18599a.16
+00518f5c	mpr-18237.11
+00518f6c	mpr-18238.12
+00518f7c	mpr-18239.9
+00518f88	mpr-18240.10
+00518f98	epr-18596.7
+00518fa4	epr-18597.8
+00518fb0	epr-18249.29
+00518fc0	epr-18250.30
+00518fd0	mpr-18233.17
+00518fe0	mpr-18234.21
+00518ff0	mpr-18235.18
+00519000	mpr-18236.22
+00519010	mpr-18232.27
+00519020	mpr-18231.25
+00519030	epr-18600.31
+00519040	mpr-18241.32
+00519050	mpr-18242.33
+00519060	mpr-18243.34
+00519070	mpr-18244.35
+00519080	indy500d
+0051908c	Indianapolis 500 (Rev A, Deluxe)
+005190b0	epr-18251a.15
+005190c0	epr-18252a.16
+005190d0	epr-18345.7
+005190dc	epr-18346.8
+005190e8	epr-18253.31
+005190f8	indy500to
+00519104	Indianapolis 500 (Rev A, Twin, Older rev)
+00519130	epr-18254a.15
+00519140	epr-18255a.16
+00519150	epr-18389.7
+0051915c	epr-18390.8
+00519168	epr-18391.31
+0051917c	Behind Enemy Lines
+00519190	epr-20225.15
+005191a0	epr-20226.16
+005191b0	epr-20223.13
+005191c0	epr-20224.14
+005191d0	mpr-20233.11
+005191e0	mpr-20234.12
+005191f0	mpr-20231.9
+005191fc	mpr-20232.10
+0051920c	mpr-20229.7
+00519218	mpr-20230.8
+00519224	mpr-20227.5
+00519230	mpr-20228.6
+0051923c	mpr-20236.29
+0051924c	mpr-20235.30
+0051925c	mpr-20244.17
+0051926c	mpr-20240.21
+0051927c	mpr-20243.18
+0051928c	mpr-20239.22
+0051929c	mpr-20242.19
+005192ac	mpr-20238.23
+005192bc	mpr-20241.20
+005192cc	mpr-20237.24
+005192dc	mpr-20247.27
+005192ec	mpr-20245.25
+005192fc	mpr-20248.28
+0051930c	mpr-20246.26
+0051931c	mpr-20249.31
+0051932c	mpr-20250.32
+0051933c	mpr-20251.33
+0051934c	mpr-20252.34
+0051935c	mpr-20253.35
+0051936c	topskatr
+00519378	Top Skater
+00519384	epr-19755a.15
+00519394	epr-19756a.16
+005193a4	mpr-19735.11
+005193b4	mpr-19736.12
+005193c4	mpr-19737.9
+005193d0	mpr-19738.10
+005193e0	mpr-19743.29
+005193f0	mpr-19744.30
+00519400	mpr-19741.17
+00519410	mpr-19742.21
+00519420	mpr-19740.27
+00519430	mpr-19739.25
+00519440	mpr-19759.31
+00519450	mpr-19760.2s
+00519460	mpr-19745.32
+00519470	mpr-19746.34
+00519480	mpr-19747.18s
+00519490	mpr-19748.20s
+005194a0	mpr-19749.22s
+005194b0	mpr-19750.24s
+005194c0	topskatru
+005194cc	Top Skater (USA)
+005194e0	epr-19753.15
+005194f0	epr-19754.16
+00519500	topskatrj
+0051950c	Top Skater (Jap)
+00519528	Dead or Alive (Model 2A)
+00519548	e19310aa.12
+00519554	e19311aa.13
+00519560	mpr-19318.11
+00519570	mpr-19319.12
+00519580	mpr-19316.9
+0051958c	mpr-19317.10
+0051959c	mpr-19314.7
+005195a8	mpr-19315.8
+005195b4	mpr-19312.5
+005195c0	mpr-19313.6
+005195cc	mpr-19322.17
+005195dc	mpr-19325.21
+005195ec	mpr-19323.18
+005195fc	mpr-19326.22
+0051960c	mpr-19324.19
+0051961c	mpr-19327.23
+0051962c	mpr-19321.27
+0051963c	mpr-19320.25
+0051964c	epr-19328.30
+0051965c	mpr-19329.31
+0051966c	mpr-19330.32
+0051967c	mpr-19331.33
+0051968c	mpr-19332.34
+0051969c	Dead or Alive (Model 2B)
+005196b8	epr-19379b.15
+005196c8	epr-19380b.16
+005196d8	sgt24h
+005196e0	Super GT 24h
+005196f0	epr-19155.15
+00519700	epr-19156.16
+00519710	mpr-19146.11
+00519720	mpr-19147.12
+00519730	mpr-19148.9
+0051973c	mpr-19149.10
+0051974c	mpr-19150.17
+0051975c	mpr-19151.21
+0051976c	mpr-19153.27
+0051977c	mpr-19152.25
+0051978c	epr-19157.31
+0051979c	mpr-19154.32
+005197b4	Virtual On Cybertroopers (Japan)
+005197dc	epr-18664b.15
+005197ec	epr-18665b.16
+005197fc	epr-18666.13
+0051980c	epr-18667.14
+0051981c	mpr-18648.11
+0051982c	mpr-18649.12
+0051983c	mpr-18650.9
+00519848	mpr-18651.10
+00519858	mpr-18662.29
+00519868	mpr-18663.30
+00519878	mpr-18654.17
+00519888	mpr-18655.21
+00519898	mpr-18656.18
+005198a8	mpr-18657.22
+005198b8	mpr-18660.27
+005198c8	mpr-18658.25
+005198d8	mpr-18661.28
+005198e8	mpr-18659.26
+005198f8	epr-18670.31
+00519908	mpr-18652.32
+00519918	mpr-18653.34
+00519928	Virtual On Cybertroopers (US)
+00519948	vo-prog0.usa
+00519958	vo-prog1.usa
+00519968	vstrikro
+00519974	Virtua Striker
+00519984	vstriker
+00519990	epr-18068.15
+005199a0	epr-18069.16
+005199b0	epr-18066.13
+005199c0	epr-18067.14
+005199d0	mpr-18055.11
+005199e0	mpr-18056.12
+005199f0	mpr-18053.9
+005199fc	mpr-18054.10
+00519a0c	epr-18070.7
+00519a18	epr-18071.8
+00519a24	mpr-18057.17
+00519a34	mpr-18059.21
+00519a44	mpr-18058.18
+00519a54	mpr-18060.22
+00519a64	mpr-18062.27
+00519a74	mpr-18061.25
+00519a84	epr-18072.31
+00519a94	mpr-18063.32
+00519aa4	mpr-18064.33
+00519ab4	mpr-18065.34
+00519ac4	Virtua Striker (Rev A)
+00519adc	epr-18068a.15
+00519aec	epr-18069a.16
+00519afc	epr-18066a.13
+00519b0c	epr-18067a.14
+00519b1c	epr-18070a.7
+00519b2c	epr-18071a.8
+00519b3c	dynabb97
+00519b48	Dynamite Baseball 97 (Rev A)
+00519b68	epr-19833a.15
+00519b78	epr-19834a.16
+00519b88	epr-19831a.13
+00519b98	epr-19832a.14
+00519ba8	mpr-19841.11
+00519bb8	mpr-19842.12
+00519bc8	mpr-19839.9
+00519bd4	mpr-19840.10
+00519be4	mpr-19837.7
+00519bf0	mpr-19838.8
+00519bfc	mpr-19835.5
+00519c08	mpr-19836.6
+00519c14	mpr-19843.17
+00519c24	mpr-19845.21
+00519c34	mpr-19844.18
+00519c44	mpr-19846.22
+00519c54	mpr-19848.27
+00519c64	mpr-19847.25
+00519c74	epr-19849.31
+00519c84	mpr-19850.32
+00519c94	mpr-19851.33
+00519ca4	mpr-19852.34
+00519cb4	mpr-19853.35
+00519cc4	fvipers
+00519ccc	Fighting Vipers
+00519cdc	epr-18606d.15
+00519cec	epr-18607d.16
+00519cfc	epr-18604d.13
+00519d0c	epr-18605d.14
+00519d1c	mpr-18614.11
+00519d2c	mpr-18615.12
+00519d3c	mpr-18612.9
+00519d48	mpr-18613.10
+00519d58	epr-18610d.7
+00519d68	epr-18611d.8
+00519d78	epr-18608d.5
+00519d88	epr-18609d.6
+00519d98	mpr-18622.29
+00519da8	mpr-18623.30
+00519db8	mpr-18616.17
+00519dc8	mpr-18619.21
+00519dd8	mpr-18617.18
+00519de8	mpr-18620.22
+00519df8	mpr-18618.19
+00519e08	mpr-18621.23
+00519e18	mpr-18626.27
+00519e28	mpr-18624.25
+00519e38	mpr-18627.28
+00519e48	mpr-18625.26
+00519e58	epr-18628.31
+00519e68	mpr-18629.32
+00519e78	mpr-18630.33
+00519e88	mpr-18631.34
+00519e98	mpr-18632.35
+00519ea8	daytona
+00519eb0	Daytona USA
+00519ebc	epr-16722a.12
+00519ecc	epr-16723a.13
+00519edc	mpr-16528.10
+00519eec	mpr-16529.11
+00519efc	mpr-16808.8
+00519f08	mpr-16809.9
+00519f14	epr-16724a.6
+00519f24	epr-16725a.7
+00519f34	mpr-16537.28
+00519f44	mpr-16536.29
+00519f54	mpr-16523.16
+00519f64	mpr-16518.20
+00519f74	mpr-16524.17
+00519f84	mpr-16519.21
+00519f94	mpr-16525.18
+00519fa4	mpr-16520.22
+00519fb4	mpr-16772.19
+00519fc4	mpr-16771.23
+00519fd4	mpr-16522.25
+00519fe4	mpr-16521.24
+00519ff4	mpr-16770.27
+0051a004	mpr-16769.26
+0051a014	epr-16720.7
+0051a020	epr-16721.8
+0051a02c	mpr-16491.32
+0051a03c	mpr-16492.33
+0051a04c	mpr-16493.4
+0051a058	mpr-16494.5
+0051a064	dayton93
+0051a070	Daytona USA '93 Edition
+0051a088	epr-16530a.12
+0051a098	epr-16531a.13
+0051a0a8	epr-16526.8
+0051a0b4	epr-16527.9
+0051a0c0	epr-16534a.6
+0051a0d0	epr-16535.7
+0051a0dc	epr-16646.19
+0051a0ec	epr-16645.23
+0051a0fc	epr-16517.27
+0051a10c	epr-16516.26
+0051a11c	daytonat
+0051a128	Daytona USA Turbo
+0051a13c	turbo1.12
+0051a148	turbo2.13
+0051a154	daytonata
+0051a160	Daytona USA Turbo (Rev A)
+0051a17c	dayturbo.12
+0051a188	dayturbo.13
+0051a194	daytonase
+0051a1a0	Daytona USA Special Edition
+0051a1bc	epr-17369a.12
+0051a1cc	epr-17370a.13
+0051a1dc	epr-13731.6
+0051a1e8	epr-13732.7
+0051a1f4	daytonam
+0051a200	Daytona USA: To The Maxx
+0051a21c	maxx.12
+0051a224	maxx.13
+0051a22c	maxx.14
+0051a234	daytonas
+0051a240	Daytona USA (Saturn Ads)
+0051a25c	epr-17965.12
+0051a26c	epr-17966.13
+0051a27c	epr17967.6
+0051a288	epr17968.7
+0051a294	daytonagtx
+0051a2a0	Daytona USA: GTX2004
+0051a2b8	gtx.12
+0051a2c0	gtx.13
+0051a2c8	16528.mpr
+0051a2d4	16529.mpr
+0051a2e0	16808.mpr
+0051a2ec	16809.mpr
+0051a2f8	16724a.epr
+0051a304	16725a.epr
+0051a310	bank0.bin
+0051a31c	bank1.bin
+0051a328	16720.epr
+0051a334	16721.epr
+0051a340	16491.mpr
+0051a34c	16492.mpr
+0051a358	16493.mpr
+0051a364	16494.mpr
+0051a370	desert
+0051a378	Desert Tank
+0051a384	epr-16976.12
+0051a394	epr-16977.13
+0051a3a4	epr-16970.14
+0051a3b4	epr-16971.15
+0051a3c4	mpr-16974.10
+0051a3d4	mpr-16975.11
+0051a3e4	mpr-16972.8
+0051a3f0	mpr-16973.9
+0051a3fc	epr-16978.6
+0051a408	epr-16979.7
+0051a414	epr-16981.28
+0051a424	epr-16980.29
+0051a434	mpr-16968.16
+0051a444	mpr-16964.21
+0051a454	mpr-16969.17
+0051a464	mpr-16965.20
+0051a474	mpr-16967.25
+0051a484	mpr-16966.24
+0051a494	epr-16985.7
+0051a4a0	mpr-16986.32
+0051a4b0	mpr-16988.4
+0051a4bc	mpr-16989.5
+0051a4d0	Virtua Cop
+0051a4dc	epr-17166b.12
+0051a4ec	epr-17167b.13
+0051a4fc	epr-17160a.14
+0051a50c	epr-17161a.15
+0051a51c	mpr-17164.10
+0051a52c	mpr-17165.11
+0051a53c	mpr-17162.8
+0051a548	mpr-17163.9
+0051a554	epr-17168a.6
+0051a564	epr-17169a.7
+0051a574	mpr-17159.16
+0051a584	mpr-17156.20
+0051a594	mpr-17158.25
+0051a5a4	mpr-17157.24
+0051a5b4	epr-17170.7
+0051a5c0	epr-17171.8
+0051a5cc	mpr-17172.32
+0051a5dc	mpr-17173.33
+0051a5ec	mpr-17174.4
+0051a5f8	mpr-17175.5
+0051a604	vcopa
+0051a60c	Virtua Cop (Rev A)
+0051a620	epr-17166a.12
+0051a630	epr-17167a.13
+0051a640	skytargt
+0051a64c	Sky Target
+0051a658	epr-18406.12
+0051a668	epr-18407.13
+0051a678	mpr-18415.10
+0051a688	mpr-18416.11
+0051a698	mpr-18417.8
+0051a6a4	mpr-18418.9
+0051a6b0	epr-18404.6
+0051a6bc	epr-18405.7
+0051a6c8	mpr-18420.28
+0051a6d8	mpr-18419.29
+0051a6e8	mpr-18413.16
+0051a6f8	mpr-18409.20
+0051a708	mpr-18414.17
+0051a718	mpr-18410.21
+0051a728	mpr-18412.25
+0051a738	mpr-18411.24
+0051a748	epr-18408.30
+0051a758	mpr-18424.31
+0051a768	mpr-18423.32
+0051a778	mpr-18422.36
+0051a788	mpr-18421.37
+0051a7a0	Virtua Fighter 2
+0051a7b8	epr-17568.12
+0051a7c8	epr-17569.13
+0051a7d8	epr-17562.14
+0051a7e8	epr-17563.15
+0051a7f8	mpr-17560.10
+0051a808	mpr-17561.11
+0051a818	mpr-17558.8
+0051a824	mpr-17559.9
+0051a830	mpr-17566.6
+0051a83c	mpr-17567.7
+0051a848	mpr-17564.4
+0051a854	mpr-17565.5
+0051a860	mpr-17554.16
+0051a870	mpr-17548.20
+0051a880	mpr-17555.17
+0051a890	mpr-17549.21
+0051a8a0	mpr-17556.18
+0051a8b0	mpr-17550.22
+0051a8c0	mpr-17553.25
+0051a8d0	mpr-17552.24
+0051a8e0	mpr-17547.27
+0051a8f0	mpr-17546.26
+0051a900	epr-17574.30
+0051a910	mpr-17573.31
+0051a920	mpr-17572.32
+0051a930	mpr-17571.36
+0051a940	mpr-17570.37
+0051a950	Virtua Fighter 2.1
+0051a964	epr-18385.12
+0051a974	epr-18386.13
+0051a984	epr-18387.14
+0051a994	epr-18388.15
+0051a9ac	Virtua Fighter 2 (Rev B)
+0051a9c8	epr-17568b.12
+0051a9d8	epr-17569b.13
+0051a9e8	epr-17562b.14
+0051a9f8	epr-17563b.15
+0051aa10	Virtua Fighter 2 (Rev A)
+0051aa2c	epr-17568a.ic12
+0051aa3c	epr-17569a.ic13
+0051aa4c	epr-17562a.ic14
+0051aa5c	epr-17563a.ic15
+0051aa6c	srallyc
+0051aa74	Sega Rally Championship
+0051aa8c	epr-17888c.12
+0051aa9c	epr-17889c.13
+0051aaac	mpr-17746.10
+0051aabc	mpr-17747.11
+0051aacc	mpr-17744.8
+0051aad8	mpr-17745.9
+0051aae4	mpr-17884.6
+0051aaf0	mpr-17885.7
+0051aafc	mpr-17755.28
+0051ab0c	mpr-17754.29
+0051ab1c	mpr-17748.16
+0051ab2c	mpr-17750.20
+0051ab3c	mpr-17749.17
+0051ab4c	mpr-17751.21
+0051ab5c	mpr-17753.25
+0051ab6c	mpr-17752.24
+0051ab7c	epr-17890.30
+0051ab8c	mpr-17756.31
+0051ab9c	mpr-17757.32
+0051abac	mpr-17886.36
+0051abbc	mpr-17887.37
+0051abcc	srallycb
+0051abd8	Sega Rally Championship (Rev B)
+0051abf8	epr-17888b.12
+0051ac08	epr-17889b.13
+0051ac18	srallyp
+0051ac20	Sega Rally Pro Drivin'
+0051ac38	ic12.bin
+0051ac44	ic13.bin
+0051ac50	vcop2
+0051ac58	Virtua Cop 2
+0051ac68	epr-18524.12
+0051ac78	epr-18525.13
+0051ac88	epr-18518.14
+0051ac98	epr-18519.15
+0051aca8	mpr-18516.10
+0051acb8	mpr-18517.11
+0051acc8	mpr-18514.8
+0051acd4	mpr-18515.9
+0051ace0	mpr-18522.6
+0051acec	mpr-18523.7
+0051acf8	mpr-18520.4
+0051ad04	mpr-18521.5
+0051ad10	mpr-18513.16
+0051ad20	mpr-18510.20
+0051ad30	mpr-18512.25
+0051ad40	mpr-18511.24
+0051ad50	epr-18530.30
+0051ad60	mpr-18529.31
+0051ad70	mpr-18528.32
+0051ad80	mpr-18527.36
+0051ad90	mpr-18526.37
+0051ada0	motoraid
+0051adac	Motor Raid
+0051adb8	epr-20007.12
+0051adc8	epr-20008.13
+0051add8	mpr-20019.10
+0051ade8	mpr-20020.11
+0051adf8	mpr-20017.8
+0051ae04	mpr-20018.9
+0051ae10	mpr-20015.6
+0051ae1c	mpr-20016.7
+0051ae28	epr-20013.4
+0051ae34	epr-20014.5
+0051ae40	epr-20011.28
+0051ae50	epr-20012.29
+0051ae60	mpr-20023.16
+0051ae70	mpr-20026.20
+0051ae80	mpr-20024.17
+0051ae90	mpr-20027.21
+0051aea0	mpr-20025.18
+0051aeb0	mpr-20028.22
+0051aec0	mpr-20022.25
+0051aed0	mpr-20021.24
+0051aee0	epr-20029.30
+0051aef0	mpr-20030.31
+0051af00	mpr-20031.32
+0051af10	mpr-20032.36
+0051af20	mpr-20033.37
+0051af30	manxtt
+0051af38	ManxTT Superbike (Rev D, Deluxe)
+0051af5c	epr-18822d.12
+0051af6c	epr-18823d.13
+0051af7c	epr-18824d.14
+0051af8c	epr-18825d.15
+0051af9c	mpr-18751.10
+0051afac	mpr-18752.11
+0051afbc	mpr-18749.8
+0051afc8	mpr-18750.9
+0051afd4	mpr-18747.6
+0051afe0	mpr-18748.7
+0051afec	mpr-18862.4
+0051aff8	mpr-18863.5
+0051b004	mpr-18761.28
+0051b014	mpr-18762.29
+0051b024	mpr-18753.16
+0051b034	mpr-18756.20
+0051b044	mpr-18754.17
+0051b054	mpr-18757.21
+0051b064	mpr-18755.18
+0051b074	mpr-18758.22
+0051b084	mpr-18760.25
+0051b094	mpr-18759.24
+0051b0a4	epr-18824a.30
+0051b0b4	mpr-18863.31
+0051b0c4	mpr-18764.32
+0051b0d4	mpr-18765.36
+0051b0e4	mpr-18766.37
+0051b0f4	epr-18742.7
+0051b100	mpr-18743.32
+0051b110	manxttc
+0051b118	ManxTT Superbike (Rev C, Twin)
+0051b138	epr-18822c.12
+0051b148	epr-18823c.13
+0051b158	epr-18824c.14
+0051b168	epr-18825c.15
+0051b178	epr-18826.30
+0051b188	mpr-18827.31
+0051b198	overrev
+0051b1a0	Over Rev
+0051b1ac	epr-20124a.15
+0051b1bc	epr-20125a.16
+0051b1cc	mpr-19996.11
+0051b1dc	mpr-19997.12
+0051b1ec	mpr-19994.9
+0051b1f8	mpr-19995.10
+0051b208	mpr-19998.17
+0051b218	mpr-19999.21
+0051b228	mpr-20001.27
+0051b238	mpr-20000.25
+0051b248	epr-20002.31
+0051b258	mpr-20003.32
+0051b268	mpr-20004.34
+0051b278	overrevb
+0051b284	Over Rev (Model 2B)
+0051b298	epr-19992b.15
+0051b2a8	epr-19993b.16
+0051b2b8	skisuprg
+0051b2c4	Sega Ski Super G
+0051b2d8	epr-19489.15
+0051b2e8	epr-19490.16
+0051b2f8	epr-19551.13
+0051b308	epr-19552.14
+0051b318	mpr-19494.11
+0051b328	mpr-19495.12
+0051b338	mpr-19492.9
+0051b344	mpr-19493.10
+0051b354	mpr-19502.29
+0051b364	mpr-19503.30
+0051b374	mpr-19496.17
+0051b384	mpr-19497.21
+0051b394	mpr-19498.18
+0051b3a4	mpr-19499.22
+0051b3b4	mpr-19501.27
+0051b3c4	mpr-19500.25
+0051b3d4	epr-19491.31
+0051b3e4	mpr-19504.32
+0051b3f4	mpr-19505.34
+0051b404	waverunr
+0051b410	Wave Runner
+0051b41c	epr-19282a.15
+0051b42c	epr-19283a.16
+0051b43c	mpr-19291.11
+0051b44c	mpr-19292.12
+0051b45c	mpr-19293.9
+0051b468	mpr-19294.10
+0051b478	epr-19278.7
+0051b484	epr-19279.8
+0051b490	epr-19280.29
+0051b4a0	epr-19281.30
+0051b4b0	mpr-19287.17
+0051b4c0	mpr-19288.21
+0051b4d0	mpr-19289.18
+0051b4e0	mpr-19290.22
+0051b4f0	epr-19304.19
+0051b500	epr-19305.23
+0051b510	mpr-19286.27
+0051b520	mpr-19285.25
+0051b530	epr-19303.28
+0051b540	epr-19302.26
+0051b550	epr-19284.31
+0051b560	mpr-19295.32
+0051b570	mpr-19296.34
+0051b580	segawski
+0051b58c	Sega Water Ski
+0051b59c	epr-19963a.15
+0051b5ac	epr-19964a.16
+0051b5bc	mpr-19980.11
+0051b5cc	mpr-19981.12
+0051b5dc	mpr-19982.9
+0051b5e8	mpr-19983.10
+0051b5f8	mpr-19984.7
+0051b604	mpr-19985.8
+0051b610	epr-19961.5
+0051b61c	epr-19962.6
+0051b628	mpr-19986.29
+0051b638	mpr-19987.30
+0051b648	mpr-19972.17
+0051b658	mpr-19973.21
+0051b668	mpr-19974.18
+0051b678	mpr-19975.22
+0051b688	mpr-19976.19
+0051b698	mpr-19977.23
+0051b6a8	mpr-19978.20
+0051b6b8	mpr-19979.24
+0051b6c8	mpr-19969.27
+0051b6d8	mpr-19968.25
+0051b6e8	mpr-19971.28
+0051b6f8	mpr-19970.26
+0051b708	epr-19967.31
+0051b718	mpr-19988.32
+0051b728	mpr-19989.34
+0051b7e0	netdumpsend
+0051b7ec	Paquete Fragmentado: Esperado %d, recibido %d
+0051b81c	Petada
+0051b824	netdumprecv
+0051b830	.\m2network.ini
+0051b840	RXPort
+0051b848	Network
+0051b850	NextPort
+0051b85c	NextIP
+0051b864	FrameSync
+0051b870	10011
+0051b878	10000
+0051b880	10001
+0051b890	SEGA Model 2
+0051b8a0	  TECMO LTD.  DEAD OR ALIVE  1996.10.22  VER. 1.00
+0051b8d4	UCHIDA MOMOKA   
+0051b8e8	98-PILOT  
+0051b8f4	FilterTilemaps
+0051b904	M2RAM
+0051b914	M2RAM2
+0051b91c	M2PAL
+0051b92c	M2TILE
+0051b934	M2BACK
+0051b93c	M2XLAT
+0051b944	M2LUMA
+0051b94c	M2BUFRAM
+0051b958	M2COPRORAM
+0051b964	M2TEX0
+0051b96c	M2TEX1
+0051b974	M2ZSHARED
+0051b980	M2SCSP
+0051b988	HoldGears
+0051b994	UpDownGears
+0051b9a0	GammaR
+0051b9a8	GammaG
+0051b9b0	GammaB
+0051b9b8	NVDATA\%s.DAT
+0051b9d0	EEPROM
+0051b9e0	Model2_SetWideScreen
+0051b9f8	Model2_SetStretchALow
+0051ba10	Model2_SetStretchBLow
+0051ba28	Model2_SetStretchAHigh
+0051ba40	Model2_SetStretchBHigh
+0051ba58	CPU (i960+DSP)
+0051ba68	Every frame
+0051ba74	Skip 1 frame
+0051ba84	Skip 2 frames
+0051ba94	Skip 4 frames
+0051baa4	Skip 8 frames
+0051bab4	Tilemap Generation
+0051bac8	Tilemap Render (Low)
+0051bae0	Polygon Render
+0051baf0	Tilemap Render (High)
+0051bb08	Rendering Stats
+0051bb18	Objects: %d
+0051bb24	Triangles: %d /   %d per sec
+0051bb44	Textures cached: %d
+0051bb58	Textures updated this frame: %d
+0051bb78	Effective CPU Time: %d%%
+0051bb94	SSF Files
+0051bba8	Open a file
+0051bbb4	Error
+0051bbbc	SoundIdle
+0051bc00	Model 2B Driver v2.0 by ElSemi
+0051bc28	lastb
+0051bc38	Model 2C Driver v2.0 by ElSemi
+0051bc60	Model 2/2A Driver v1.0 by ElSemi
+0051bc98	I960_ReadByte
+0051bca8	I960_ReadWord
+0051bcb8	I960_ReadDWord
+0051bcc8	I960_WriteByte
+0051bcd8	I960_WriteWord
+0051bce8	I960_WriteDWord
+0051bcf8	I960_GetRamPtr
+0051bd08	Invalid opcode at %X
+0051bd20	Invalid Opcode
+0051bd30	SHARC bad compute opcode at %X
+0051bd50	SHARC
+0051bd58	struct VS_IN                                                 \n{                                                            \n   float4   Pos             : POSITION;                      \n   float4   LightMap		 : COLOR0;						  \n   float4   BaseColor		 : COLOR1;						  \n   float2   Tex             : TEXCOORD0;                     \n};                                                           \n                                                             \nstruct VS_OUT                                                \n{                                                            \n   float4 Position        : POSITION;                        \n   float4 LightMap		 : COLOR0;	 					      \n   float4 BaseColor		 : COLOR1;						  \n   float2 TexCoord0       : TEXCOORD0;                       \n};                                                           \n															  \nstruct PS_IN                                                \n{                                                            \n   float4 LightMap		 : COLOR0;	 					      \n   float4 BaseColor		 : COLOR1;						  \n   float2 TexCoord0       : TEXCOORD0;                       \n};                                                           \n                                                             \nstruct PS_OUT												  \n{															  \n	float4 Color:COLOR0;										  \n};													          \n                                                             \n                                                             \nsampler        Texture : register(s0);					      \nsampler        Luma : register(s2);					      \nsampler        Xlat : register(s3);					      \n                                                             \nfloat mesh:register(c1);\nfloat2 scale:register(c2);\nfloat4 dist:register(c4);\n\nVS_OUT VShader( VS_IN In )                              \n{                                                            \n   VS_OUT Out;                                               \n   Out.Position  = In.Pos;						          \n	if(Out.Position.z<0.0) Out.Position.z=0.0;\n	if(Out.Position.z>1.0)	Out.Position.z=1.0;\n	Out.Position.z=Out.Position.z*In.Pos.w;					\n   Out.TexCoord0 = In.Tex;				                  \n	Out.LightMap = In.LightMap;							  \n	Out.BaseColor = In.BaseColor;							  \n   return Out;                                               \n}                                                            \nPS_OUT PShader( PS_IN In )                      \n{                                                            \n	 PS_OUT T;\n    float4 Base=tex2D(Texture,In.TexCoord0);												\n	 float2 Lum;\n	 float lbase;\n	 if(Base.a<=0.5)\n		 clip(-1.0);\n	 //Edge check\n    T.Color.a=Base.a; \n	 if(In.LightMap.b==0.0)\n		lbase=Base.r;\n	 else\n	 {\n		Lum.y=In.LightMap.g;\n		Lum.x=Base.r;\n		lbase=tex2D(Luma,Lum).x;\n	 }\n	 lbase*=In.LightMap.r;\n	 float2 Col;\n	 Col.x=lbase/*-(0.5f/64.0f)*/;\n	 Col.y=In.BaseColor.r;\n    T.Color.r=tex2D(Xlat,Col).r;                                      \n	 Col.y=In.BaseColor.g;\n    T.Color.g=tex2D(Xlat,Col).g;                                      \n	 Col.y=In.BaseColor.b;\n    T.Color.b=tex2D(Xlat,Col).b;                                      \n    return T;					                              \n}                                                            \n\n\nPS_OUT PShaderMesh( PS_IN In,float4 Pos:VPOS)\n{                       \n    PS_OUT T;        \n    T=PShader(In);\n                    \n    if(mesh!=0.0)\n    {\n		float2 tmp=Pos.xy/scale;\n		int x=((int) (tmp.x))%2;\n		int y=((int) (tmp.y))%2;\n		if(x!=y)\n			T.Color.a=0.0;\n    }             \n\n    return T;\n}\nPS_OUT PShaderBlend( PS_IN In)\n{                       \n    PS_OUT T;        \n    T=PShader(In);\n                    \n	 if(mesh.r!=0.0 && T.Color.a==1.0)\n		T.Color.a=0.5;\n    return T;\n}\n
+0051ccfa	n5Objects: %d  Polys: %d
+0051cd14	FakeGouraud
+0051cd20	Bilinear
+0051cd2c	Trilinear
+0051cd38	AutoMip
+0051cd40	Wireframe
+0051cd4c	MeshTransparency
+0051cd60	ps.3.0
+0051cd68	PShaderBlend
+0051cd78	PShaderMesh
+0051cd84	SCRIPTS\mode_%d.ps
+0051cd98	Pixel Shader Build Error mode_%d.ps
+0051cdbc	vs.2.0
+0051cdc4	vs.3.0
+0051cdcc	VShader
+0051cdd4	TEXCACHE
+0051cde0	TEXCACHE\%X_%X.png
+0051cdf4	SCRIPTS
+0051cdfc	%s.pat
+0051ce04	%x %x %x %s
+0051ce10	vector<T> too long
+0051ce24	TGPX4
+00520c50	bad exception
+00523ccc	RSDS
+00523ce4	K:\Proyectos\emulator\Model2 Release\emulator.pdb
+00526868	COMCTL32.dll
+00526878	Direct3DCreate9
+00526888	d3d9.dll
+00526894	DirectInput8Create
+005268a8	DINPUT8.dll
+005268b6	D3DXCreateTextureFromFileExA
+005268d6	D3DXCreateTextureFromFileInMemory
+005268fa	D3DXCompileShader
+0052690e	D3DXCreateFontIndirectA
+00526928	D3DXSaveSurfaceToFileA
+00526942	D3DXCompileShaderFromFileA
+00526960	D3DXCreateTextureFromFileA
+0052697e	D3DXSaveTextureToFileA
+00526996	d3dx9_42.dll
+005269a4	WS2_32.dll
+005269b2	GetPrivateProfileStringA
+005269ce	CreateDirectoryA
+005269e2	AllocConsole
+005269f2	FreeLibrary
+00526a00	InterlockedDecrement
+00526a18	QueryPerformanceCounter
+00526a32	WaitForSingleObject
+00526a48	SetEvent
+00526a54	GetCurrentThread
+00526a68	GetCommandLineA
+00526a7a	GetPrivateProfileIntA
+00526a92	TerminateThread
+00526aa4	CreateEventA
+00526ab4	SetConsoleTitleA
+00526ac8	GetStdHandle
+00526ad8	GetProcAddress
+00526aea	LoadLibraryA
+00526afa	WriteConsoleA
+00526b0a	WritePrivateProfileStringA
+00526b28	GetSystemInfo
+00526b38	GetModuleHandleA
+00526b4c	QueryPerformanceFrequency
+00526b68	CloseHandle
+00526b76	ResumeThread
+00526b86	CreateThread
+00526b96	InitializeCriticalSection
+00526bb2	LeaveCriticalSection
+00526bca	EnterCriticalSection
+00526be2	FormatMessageA
+00526bf4	GetLastError
+00526c04	GetModuleFileNameA
+00526c1a	Sleep
+00526c22	SetCurrentDirectoryA
+00526c3a	GetCurrentDirectoryA
+00526c52	VirtualFree
+00526c60	VirtualAlloc
+00526c70	CreateFileA
+00526c7e	ReadFile
+00526c8a	WriteFile
+00526c96	SetFilePointer
+00526ca6	KERNEL32.dll
+00526cb6	RegisterClassA
+00526cc8	CheckMenuItem
+00526cd8	DialogBoxParamA
+00526cea	LoadCursorA
+00526cf8	SetMenuItemInfoA
+00526d0c	AdjustWindowRect
+00526d20	UpdateWindow
+00526d30	SetWindowTextA
+00526d42	DispatchMessageA
+00526d56	PostMessageA
+00526d66	CreatePopupMenu
+00526d78	SetMenu
+00526d82	ShowWindow
+00526d90	SetWindowPos
+00526da0	DefWindowProcA
+00526db2	EndDialog
+00526dbe	GetDlgItem
+00526dcc	EnableMenuItem
+00526dde	PeekMessageA
+00526dee	CreateWindowExA
+00526e00	GetWindowLongA
+00526e12	InvalidateRect
+00526e24	MessageBoxA
+00526e32	SetWindowLongA
+00526e44	GetMenu
+00526e4e	SetDlgItemInt
+00526e5e	TranslateMessage
+00526e72	BeginPaint
+00526e80	SendMessageA
+00526e90	GetClientRect
+00526ea0	LoadIconA
+00526eac	LoadMenuA
+00526eb8	GetParent
+00526ec4	DeleteMenu
+00526ed2	GetSubMenu
+00526ee0	KillTimer
+00526eec	SendDlgItemMessageA
+00526f02	InsertMenuItemA
+00526f14	SetTimer
+00526f20	GetMessageA
+00526f2e	EndPaint
+00526f3a	GetCursorPos
+00526f4a	GetForegroundWindow
+00526f60	ShowCursor
+00526f6e	GetWindowRect
+00526f7e	ScreenToClient
+00526f90	GetSystemMetrics
+00526fa4	GetDlgCtrlID
+00526fb4	GetWindowTextA
+00526fc4	USER32.dll
+00526fd2	SetStretchBltMode
+00526fe6	StretchDIBits
+00526ff6	SetBrushOrgEx
+00527004	GDI32.dll
+00527010	GetOpenFileNameA
+00527022	COMDLG32.dll
+00527032	ShellExecuteA
+00527040	SHELL32.dll
+0052704e	CoCreateInstance
+00527062	CoInitialize
+00527070	ole32.dll
+0052707c	DecodePointer
+0052708c	EncodePointer
+0052709c	HeapFree
+005270a8	HeapAlloc
+005270b4	HeapReAlloc
+005270c2	RtlUnwind
+005270ce	GetModuleHandleW
+005270e2	ExitProcess
+005270f0	CreateProcessA
+00527102	DuplicateHandle
+00527114	GetCurrentProcess
+00527128	MoveFileA
+00527134	DeleteFileA
+00527142	GetSystemTimeAsFileTime
+0052715c	GetTimeFormatA
+0052716e	GetDateFormatA
+00527180	InterlockedIncrement
+00527198	HeapSetInformation
+005271ae	GetStartupInfoW
+005271c0	GetModuleFileNameW
+005271d6	GetLocaleInfoW
+005271e8	UnhandledExceptionFilter
+00527204	SetUnhandledExceptionFilter
+00527222	IsDebuggerPresent
+00527236	TerminateProcess
+0052724a	InitializeCriticalSectionAndSpinCount
+00527272	MultiByteToWideChar
+00527288	HeapCreate
+00527296	RaiseException
+005272a8	HeapSize
+005272b4	WideCharToMultiByte
+005272ca	GetConsoleCP
+005272da	GetConsoleMode
+005272ec	SetHandleCount
+005272fe	GetFileType
+0052730c	DeleteCriticalSection
+00527324	GetCPInfo
+00527330	GetACP
+0052733a	GetOEMCP
+00527346	IsValidCodePage
+00527358	TlsAlloc
+00527364	TlsGetValue
+00527372	TlsSetValue
+00527380	TlsFree
+0052738a	SetLastError
+0052739a	GetCurrentThreadId
+005273b0	IsProcessorFeaturePresent
+005273cc	LoadLibraryW
+005273dc	GetCurrentProcessId
+005273f2	GetFileAttributesA
+00527408	CreatePipe
+00527416	GetExitCodeProcess
+0052742c	FlushFileBuffers
+00527440	GetTimeZoneInformation
+0052745a	GetUserDefaultLCID
+00527470	GetLocaleInfoA
+00527482	EnumSystemLocalesA
+00527498	IsValidLocale
+005274a8	GetStringTypeW
+005274ba	LCMapStringW
+005274ca	CompareStringW
+005274dc	FreeEnvironmentStringsW
+005274f6	GetEnvironmentStringsW
+00527510	GetTickCount
+00527520	SetStdHandle
+00527530	WriteConsoleW
+00527540	SetEndOfFile
+00527550	GetProcessHeap
+00527562	SetEnvironmentVariableA
+0052757c	CreateFileW
+0052758a	SetEnvironmentVariableW
+00528000	1.2.2
+00528008	compress
+00528014	%s error: %d\n
+00528024	garbage
+0052802c	uncompress
+00528038	%s error: %d\n
+00528048	bad uncompress\n
+00528058	uncompress(): %s\n
+00528070	gzopen error\n
+00528088	gzputs err: %s\n
+00528098	hello
+005280a8	gzprintf err: %s\n
+005280c0	gzopen error\n
+005280d0	garbage
+005280d8	gzread err: %s\n
+005280e8	bad gzread: %s\n
+005280f8	gzread(): %s\n
+00528108	gzseek error, pos=%ld, gztell=%ld\n
+0052812c	gzgetc error\n
+0052813c	gzungetc error\n
+0052814c	gzgets err after gzseek: %s\n
+0052816c	bad gzgets after gzseek\n
+00528188	gzgets() after gzseek: %s\n
+005281a4	1.2.2
+005281ac	deflateInit
+005281b8	%s error: %d\n
+005281c8	deflate
+005281d0	%s error: %d\n
+005281e0	deflate
+005281e8	%s error: %d\n
+005281f8	deflateEnd
+00528204	%s error: %d\n
+0052821c	1.2.2
+00528224	inflateInit
+00528230	%s error: %d\n
+00528240	inflate
+00528248	%s error: %d\n
+00528258	inflateEnd
+00528264	%s error: %d\n
+00528274	bad inflate\n
+00528284	inflate(): %s\n
+00528294	1.2.2
+0052829c	deflateInit
+005282a8	%s error: %d\n
+005282b8	deflate
+005282c0	%s error: %d\n
+005282d0	deflate not greedy\n
+005282e4	deflate
+005282ec	%s error: %d\n
+005282fc	deflate
+00528304	%s error: %d\n
+00528314	deflate should report Z_STREAM_END\n
+00528338	deflateEnd
+00528344	%s error: %d\n
+0052835c	1.2.2
+00528364	inflateInit
+00528370	%s error: %d\n
+00528380	large inflate
+00528390	%s error: %d\n
+005283a0	inflateEnd
+005283ac	%s error: %d\n
+005283bc	bad large inflate: %ld\n
+005283d4	large_inflate(): OK\n
+005283ec	1.2.2
+005283f4	deflateInit
+00528400	%s error: %d\n
+00528410	deflate
+00528418	%s error: %d\n
+00528428	deflate
+00528430	%s error: %d\n
+00528440	deflateEnd
+0052844c	%s error: %d\n
+00528464	1.2.2
+0052846c	inflateInit
+00528478	%s error: %d\n
+00528488	inflate
+00528490	%s error: %d\n
+005284a0	inflateSync
+005284ac	%s error: %d\n
+005284bc	inflate should report DATA_ERROR\n
+005284e0	inflateEnd
+005284ec	%s error: %d\n
+005284fc	after inflateSync(): hel%s\n
+00528520	deflateInit
+0052852c	%s error: %d\n
+0052853c	deflateSetDictionary
+00528554	%s error: %d\n
+00528564	deflate should report Z_STREAM_END\n
+00528588	deflateEnd
+00528594	%s error: %d\n
+005285ac	1.2.2
+005285b4	inflateInit
+005285c0	%s error: %d\n
+005285d0	unexpected dictionary
+005285e8	inflate with dict
+005285fc	%s error: %d\n
+0052860c	inflateEnd
+00528618	%s error: %d\n
+00528628	bad inflate with dict\n
+00528640	inflate with dictionary: %s\n
+0052866c	incompatible zlib version\n
+00528690	warning: different zlib version\n
+005286bc	zlib version %s = 0x%04x, compile flags = 0x%lx\n
+005286f0	out of memory\n
+00528708	1.2.2
+00528710	1.2.2
+00528718	%c%c%c%c%c%c%c%c%c%c
+00528730	<fd:%d>
+00528744	invalid block type
+00528758	invalid stored block lengths
+00528778	too many length or distance symbols
+0052879c	invalid code lengths set
+005287b8	invalid bit length repeat
+005287d4	invalid bit length repeat
+005287f0	invalid literal/lengths set
+0052880c	invalid distances set
+00528824	invalid literal/length code
+00528840	invalid distance code
+00528858	invalid distance too far back
+00528878	invalid distance too far back
+00528898	invalid distance code
+005288b0	invalid literal/length code
+005288cc	1.2.2
+005288d4	incorrect header check
+005288ec	unknown compression method
+00528908	invalid window size
+0052891c	unknown compression method
+00528938	unknown header flags set
+00528954	header crc mismatch
+00528968	invalid block type
+0052897c	invalid stored block lengths
+0052899c	too many length or distance symbols
+005289c0	invalid code lengths set
+005289dc	invalid bit length repeat
+005289f8	invalid bit length repeat
+00528a14	invalid literal/lengths set
+00528a30	invalid distances set
+00528a48	invalid literal/length code
+00528a64	invalid distance code
+00528a7c	invalid distance too far back
+00528a9c	incorrect data check
+00528ab4	incorrect length check
+00528b08	1.2.2
+00528b10	need dictionary
+00528b20	stream end
+00528b2c	file error
+00528b38	stream error
+00528b48	data error
+00528b54	insufficient memory
+00528b68	buffer error
+00528b78	incompatible version
+00528ba4	1.2.2
+00528bb0	1.2.2
+00571220	.?AVtype_info@@
+0057196e	abcdefghijklmnopqrstuvwxyz
+0057198e	ABCDEFGHIJKLMNOPQRSTUVWXYZ
+00571b79	abcdefghijklmnopqrstuvwxyz
+00571b99	ABCDEFGHIJKLMNOPQRSTUVWXYZ
+00572738	.?AVlogic_error@std@@
+00572758	.?AVlength_error@std@@
+00572778	.?AVout_of_range@std@@
+00572798	.?AVCMachine@@
+005727b0	.?AVexception@std@@
+005727cc	.?AVbad_alloc@std@@
+005727e8	.?AUIXAudio2VoiceCallback@@
+0057280c	.?AUStreamingVoiceContext@CSound@@
+0059471c	.?AVCInput@@
+00594734	.?AVCXInput@@
+0059474c	.?AVCMemSource@@
+00594768	.?AVCSource@@
+00594780	.PAX
+00594790	.PAVInvalidFileException@CPng@@
+005947b8	.?AV_dynabb_Inputs@@
+005947d8	.?AV_vcop2_Inputs@@
+005947f4	.?AV_rchase2_Inputs@@
+00594814	.?AV_motoraid_Inputs@@
+00594834	.?AV_vf2_Inputs@@
+00594850	.?AV_srally_Inputs@@
+00594870	.?AV_manxtt_Inputs@@
+00594890	.?AV_skytargt_Inputs@@
+005948b0	.?AV_daytonat_Inputs@@
+005948d0	.?AV_daytona_Inputs@@
+005948f0	.?AV_dtank_Inputs@@
+0059490c	.?AV_wski_Inputs@@
+00594928	.?AV_wave_Inputs@@
+00594944	.?AV_skig_Inputs@@
+00594960	.?AV_tops_Inputs@@
+0059497c	.?AV_stcc_Inputs@@
+00594998	.?AV_bel_Inputs@@
+005949b4	.?AV_von_Inputs@@
+005949d0	.?AV_model2a_Inputs@@
+005949f0	.?AV_model2_Inputs@@
+00594a10	.?AVCInputPorts@@
+00594a2c	.?AVModel2@@
+00594a88	.?AVbad_exception@std@@
+ffdff1ac	
+ffdffc00	

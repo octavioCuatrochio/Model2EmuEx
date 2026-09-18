@@ -1,0 +1,92 @@
+/*
+ * Model 2 / 2A geometrizer and rasterizer front end (high level): walks the
+ * display list the i960 builds in buffer RAM, transforms, lights, culls,
+ * clips and projects the polygons, and returns them in drawing order.
+ *
+ * Structure follows EMULATOR.EXE's renderer (command tables 0x5733e8 and
+ * 0x573340, parser 0x4baa60, object processor 0x4bb400, window 0x4bac20);
+ * the field-level details follow MAME's model2 video code (src/mame/sega/
+ * model2_v.cpp, BSD-3-Clause, by R. Belmont, Olivier Galibert, ElSemi,
+ * Angelo Salese, Matthew Daniels), which documents the same hardware from
+ * the 2B manual and ElSemi's Direct3D implementation. See QUIRKS.md.
+ */
+#ifndef M2GEO_H
+#define M2GEO_H
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+struct m2_board;
+
+typedef struct {
+    float x, y;      /* frame pixels, 0..496 (+2 * wide_extra) x 0..384, y down */
+    float z;         /* view depth (> 0) */
+    float u, v;      /* texel coordinates inside one copy of the texture,
+                        0..width x 0..height (repeat and mirror already applied) */
+} m2_gvert;
+
+#define M2_POLY_VERTS 12
+
+typedef struct {
+    uint16_t th[4];  /* texture header: see m2gl.c */
+    uint8_t  luma;   /* polygon luminance 0..255 */
+    uint8_t  nverts; /* 3..12 after clipping and texture splitting */
+    uint8_t  window;
+    uint16_t zval;   /* 4.12 sort key */
+    uint32_t seq;
+    m2_gvert v[M2_POLY_VERTS];
+} m2_gpoly;
+
+#define M2_MAX_POLYS 32768
+
+typedef struct { float x, y, z; } m2_vec3;
+
+typedef struct {
+    /* geometrizer state */
+    float    matrix[12];
+    float    focus_x, focus_y;
+    m2_vec3  light;
+    uint32_t mode;
+    float    lod;
+    struct { float diffuse, ambient, spec_scale; uint32_t spec_ctrl; } texparam[32];
+    float    coef[32];
+    uint32_t poly_ram[2][0x8000];   /* slow (0) and fast (1) polygon RAM */
+    uint16_t tex_ram[0x10000];      /* texture point/header RAM (command 4) */
+    uint8_t  log_ram[0x8000];
+
+    /* rasterizer front end */
+    int32_t  viewport[4];
+    int32_t  center[4][2];
+    m2_vec3  clip_n[4][4];
+    int      center_sel;
+    int      cur_window;
+    float    xoff, yoff;             /* CRTC offsets: 84 + hsync, 130 + vsync */
+    /* widescreen, set by the caller before m2geo_run: pixels added on each
+       side of the 496-wide frame (0 = 4:3), which shifts everything right by
+       this much; with wide_fov, full-width windows also see the extra area */
+    float    wide_extra;
+    int      wide_fov;
+    float    polygon_z;
+    uint32_t z_adjust;
+
+    /* output, in drawing order after m2geo_run */
+    m2_gpoly *polys;
+    uint32_t *order;
+    int       npolys;
+    uint32_t  seq;
+} m2_geo;
+
+m2_geo *m2geo_create(void);
+void    m2geo_destroy(m2_geo *g);
+/* Processes this frame's display list; the result is g->polys[g->order[i]]
+   for i < g->npolys, back to front. */
+void    m2geo_run(m2_geo *g, const struct m2_board *b);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

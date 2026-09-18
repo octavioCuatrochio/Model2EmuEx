@@ -1,0 +1,493 @@
+/* GLES2 renderer; see m2gl.h. Polygon colour pipeline as in the hardware
+   (and the original's pixel shader, string at 0x51bd58):
+     texel (4 bit) -> luma RAM[lumabase + texel*8] * polygon luma / 256
+     -> colour translation RAM row of each channel of palette[0x1000 + colorbase]
+   Tables live in textures so a frame is one draw call; everything the
+   fragment shader computes fits mediump (Mali-400 has no highp there). */
+#include "m2gl.h"
+#include "m2board.h"
+
+#include <GLES2/gl2.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define ATLAS 2048
+
+struct m2_gl {
+    GLuint tile_prog, poly_prog, post_prog;
+    GLint  u_post_tex, u_post_sat, u_post_x, u_meshblend;
+    GLint  u_tile_tex, u_tile_thr, u_tile_x;
+    GLint  u_atlas, u_luma, u_colour, u_scale;
+    int    fb_w, fb_h, fb_smooth;
+    GLuint tex_tiles[2], atlas, luma, colour, fb_tex, fbo;
+    GLuint vbo_quad, vbo_poly;
+    uint8_t band_dirty[2][64];
+    int     luma_dirty, colour_dirty, atlas_ready;
+    uint8_t *scratch;          /* 1024 x 32 texels */
+    uint8_t *table;            /* colour table build: 64 x 1024 RGBA */
+    float  *verts;
+    size_t  verts_cap;
+};
+
+/* ------------------------------------------------------------ shaders */
+
+static const char *tile_vs =
+    "attribute vec2 pos;\n"
+    "attribute vec2 uv;\n"
+    "uniform vec2 xform;\n"      /* x scale, x offset: where the 496-wide layer lands */
+    "varying vec2 v_uv;\n"
+    "void main() { v_uv = uv; gl_Position = vec4(pos.x * xform.x + xform.y, pos.y, 0.0, 1.0); }\n";
+
+/* Tile pixels carry their priority in alpha (m2tile.h): the original's alpha
+   test <= 0x90 below the 3D (every visible pixel), <= 0x20 above it (high
+   priority only). thr < 0 draws everything (final blit). */
+static const char *tile_fs =
+    "precision mediump float;\n"
+    "uniform sampler2D tex;\n"
+    "uniform float thr;\n"
+    "varying vec2 v_uv;\n"
+    "void main() {\n"
+    "    vec4 c = texture2D(tex, v_uv);\n"
+    "    if (c.a < thr) discard;\n"
+    "    gl_FragColor = vec4(c.rgb, 1.0);\n"
+    "}\n";
+
+/* final pass to the window: optional saturation boost (not in the original) */
+static const char *post_fs =
+    "precision mediump float;\n"
+    "uniform sampler2D tex;\n"
+    "uniform float sat;\n"
+    "varying vec2 v_uv;\n"
+    "void main() {\n"
+    "    vec3 c = texture2D(tex, v_uv).rgb;\n"
+    "    float l = dot(c, vec3(0.299, 0.587, 0.114));\n"
+    "    gl_FragColor = vec4(clamp(mix(vec3(l), c, sat), 0.0, 1.0), 1.0);\n"
+    "}\n";
+
+static const char *poly_vs =
+    "attribute vec4 pos;\n"      /* clip space, w = view depth: perspective-correct uv */
+    "attribute vec2 uv;\n"       /* atlas coordinates */
+    "attribute vec4 par;\n"      /* luma row, colour row, luma scale or column, translucent */
+    "attribute vec2 par2;\n"     /* checker, untextured */
+    "varying vec2 v_uv;\n"
+    "varying vec4 v_par;\n"
+    "varying vec2 v_par2;\n"
+    "void main() { v_uv = uv; v_par = par; v_par2 = par2; gl_Position = pos; }\n";
+
+static const char *poly_fs =
+    "precision mediump float;\n"
+    "uniform sampler2D atlas;\n"
+    "uniform sampler2D lumat;\n"
+    "uniform sampler2D colt;\n"
+    "uniform float scale;\n"    /* render scale: the mesh stays at native pixels */
+    "uniform float meshblend;\n" /* 1: mesh polygons 50% translucent (orig MeshTransparency) */
+    "varying vec2 v_uv;\n"
+    "varying vec4 v_par;\n"
+    "varying vec2 v_par2;\n"
+    "void main() {\n"
+    "    float alpha = 1.0;\n"
+    "    if (v_par2.x > 0.5) {\n"   /* mesh: every other pixel (hardware checker) */
+    "        if (meshblend > 0.5) {\n"
+    "            alpha = 0.5;\n"
+    "        } else {\n"
+    "            vec2 f = floor(gl_FragCoord.xy / scale);\n"
+    "            if (mod(f.x + f.y, 2.0) > 0.5) discard;\n"
+    "        }\n"
+    "    }\n"
+    "    float col;\n"
+    "    if (v_par2.y > 0.5) {\n"
+    "        col = v_par.z;\n"
+    "    } else {\n"
+    "        float t = floor(texture2D(atlas, v_uv).r * 15.0 + 0.5);\n"
+    "        if (v_par.w > 0.5 && t > 14.5) discard;\n"
+    "        float l = texture2D(lumat, vec2((t * 8.0 + 0.5) / 128.0, v_par.x)).r * 255.0;\n"
+    "        l = min(floor(l * v_par.z), 63.0);\n"
+    "        col = (l + 0.5) / 64.0;\n"
+    "    }\n"
+    "    gl_FragColor = vec4(texture2D(colt, vec2(col, v_par.y)).rgb, alpha);\n"
+    "}\n";
+
+static GLuint compile(GLenum type, const char *src)
+{
+    GLuint s = glCreateShader(type);
+    GLint ok;
+    glShaderSource(s, 1, &src, NULL);
+    glCompileShader(s);
+    glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
+    if (!ok) {
+        char log[1024];
+        glGetShaderInfoLog(s, sizeof log, NULL, log);
+        fprintf(stderr, "m2gl: shader: %s\n", log);
+    }
+    return s;
+}
+
+static GLuint program(const char *vs, const char *fs, const char *const *attrs, int nattrs)
+{
+    GLuint p = glCreateProgram();
+    GLint ok;
+    glAttachShader(p, compile(GL_VERTEX_SHADER, vs));
+    glAttachShader(p, compile(GL_FRAGMENT_SHADER, fs));
+    for (int i = 0; i < nattrs; i++)
+        glBindAttribLocation(p, (GLuint)i, attrs[i]);
+    glLinkProgram(p);
+    glGetProgramiv(p, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        char log[1024];
+        glGetProgramInfoLog(p, sizeof log, NULL, log);
+        fprintf(stderr, "m2gl: link: %s\n", log);
+        return 0;
+    }
+    return p;
+}
+
+static GLuint texture(int w, int h, GLenum fmt, GLenum filter)
+{
+    GLuint t;
+    glGenTextures(1, &t);
+    glBindTexture(GL_TEXTURE_2D, t);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, (GLint)filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, (GLint)filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, (GLint)fmt, w, h, 0, fmt, GL_UNSIGNED_BYTE, NULL);
+    return t;
+}
+
+m2_gl *m2gl_create(void)
+{
+    static const char *tile_attrs[] = { "pos", "uv" };
+    static const char *poly_attrs[] = { "pos", "uv", "par", "par2" };
+    m2_gl *g = calloc(1, sizeof *g);
+    if (!g)
+        return NULL;
+    g->scratch = malloc(1024 * 32);
+    g->table = malloc(64 * 1024 * 4);
+    g->tile_prog = program(tile_vs, tile_fs, tile_attrs, 2);
+    g->post_prog = program(tile_vs, post_fs, tile_attrs, 2);
+    g->poly_prog = program(poly_vs, poly_fs, poly_attrs, 4);
+    if (!g->scratch || !g->table || !g->tile_prog || !g->poly_prog || !g->post_prog) {
+        m2gl_destroy(g);
+        return NULL;
+    }
+    g->u_tile_tex = glGetUniformLocation(g->tile_prog, "tex");
+    g->u_tile_thr = glGetUniformLocation(g->tile_prog, "thr");
+    g->u_tile_x = glGetUniformLocation(g->tile_prog, "xform");
+    g->u_scale = glGetUniformLocation(g->poly_prog, "scale");
+    g->u_meshblend = glGetUniformLocation(g->poly_prog, "meshblend");
+    g->u_post_tex = glGetUniformLocation(g->post_prog, "tex");
+    g->u_post_sat = glGetUniformLocation(g->post_prog, "sat");
+    g->u_post_x = glGetUniformLocation(g->post_prog, "xform");
+    g->u_atlas = glGetUniformLocation(g->poly_prog, "atlas");
+    g->u_luma = glGetUniformLocation(g->poly_prog, "lumat");
+    g->u_colour = glGetUniformLocation(g->poly_prog, "colt");
+
+    for (int i = 0; i < 2; i++)
+        g->tex_tiles[i] = texture(M2_SCREEN_W, M2_SCREEN_H, GL_RGBA, GL_NEAREST);
+    g->atlas = texture(ATLAS, ATLAS, GL_LUMINANCE, GL_NEAREST);
+    g->luma = texture(128, 256, GL_LUMINANCE, GL_NEAREST);
+    g->colour = texture(64, 1024, GL_RGBA, GL_NEAREST);
+    glGenTextures(1, &g->fb_tex);
+    glGenFramebuffers(1, &g->fbo);
+
+    /* full-screen quad, triangle strip; v = 0 is the top line of the tile layers */
+    static const float quad[] = { -1, -1, 0, 1,   1, -1, 1, 1,   -1, 1, 0, 0,   1, 1, 1, 0,
+                                  /* blit: GL orientation */
+                                  -1, -1, 0, 0,   1, -1, 1, 0,   -1, 1, 0, 1,   1, 1, 1, 1 };
+    glGenBuffers(1, &g->vbo_quad);
+    glBindBuffer(GL_ARRAY_BUFFER, g->vbo_quad);
+    glBufferData(GL_ARRAY_BUFFER, sizeof quad, quad, GL_STATIC_DRAW);
+    glGenBuffers(1, &g->vbo_poly);
+
+    memset(g->band_dirty, 1, sizeof g->band_dirty);
+    g->luma_dirty = g->colour_dirty = 1;
+    return g;
+}
+
+void m2gl_destroy(m2_gl *g)
+{
+    if (!g)
+        return;
+    GLuint tex[] = { g->tex_tiles[0], g->tex_tiles[1], g->atlas, g->luma, g->colour, g->fb_tex };
+    glDeleteTextures(6, tex);
+    glDeleteFramebuffers(1, &g->fbo);
+    glDeleteBuffers(1, &g->vbo_quad);
+    glDeleteBuffers(1, &g->vbo_poly);
+    glDeleteProgram(g->tile_prog);
+    glDeleteProgram(g->poly_prog);
+    glDeleteProgram(g->post_prog);
+    free(g->scratch);
+    free(g->table);
+    free(g->verts);
+    free(g);
+}
+
+/* ------------------------------------------------------------ notifications */
+
+/* Texture RAM holds 16-bit words of 2x2 texels; word k covers stored texels
+   x = (k % 512) * 2, y = (k / 512) * 2 (1024 x 2048 stored). */
+void m2gl_texture_written(m2_gl *g, int bank, uint32_t offset)
+{
+    uint32_t sy = ((offset >> 1) / 512) * 2;
+    g->band_dirty[bank & 1][(sy >> 5) & 63] = 1;
+}
+
+void m2gl_luma_written(m2_gl *g) { g->luma_dirty = 1; }
+void m2gl_xlat_written(m2_gl *g) { g->colour_dirty = 1; }
+void m2gl_palette_written(m2_gl *g, uint32_t offset)
+{
+    if (offset >= 0x2000 && offset < 0x2800)   /* entries 0x1000-0x13ff */
+        g->colour_dirty = 1;
+}
+
+/* ------------------------------------------------------------ table uploads */
+
+static uint16_t ld16(const uint8_t *p) { uint16_t v; memcpy(&v, p, 2); return v; }
+
+/* One band of 32 stored rows. The texture sheets are 2048 x 1024 texels but
+   stored as 1024 x 2048: stored rows 1024-2047 are the sheet's right half
+   (MAME get_texel). Atlas: sheet s at rows 1024*s. */
+static void upload_band(m2_gl *g, const uint8_t *ram, int bank, int band)
+{
+    int sy0 = band * 32;
+    for (int r = 0; r < 32; r++) {
+        int sy = sy0 + r;
+        uint8_t *out = g->scratch + r * 1024;
+        const uint8_t *row = ram + (size_t)(sy >> 1) * 1024;
+        int shy = (sy & 1) ? 0 : 8;
+        for (int sx = 0; sx < 1024; sx += 2) {
+            uint16_t w = ld16(row + sx);
+            out[sx] = (uint8_t)(((w >> (shy + 4)) & 15) * 17);
+            out[sx + 1] = (uint8_t)(((w >> shy) & 15) * 17);
+        }
+    }
+    int x = sy0 >= 1024 ? 1024 : 0, y = (sy0 & 1023) + 1024 * bank;
+    glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, 1024, 32, GL_LUMINANCE, GL_UNSIGNED_BYTE, g->scratch);
+}
+
+static void upload_tables(m2_gl *g, const m2_board *b, const m2_tilegen *t)
+{
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g->atlas);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    for (int bank = 0; bank < 2; bank++)
+        for (int band = 0; band < 64; band++)
+            if (g->band_dirty[bank][band]) {
+                upload_band(g, bank ? b->tex1 : b->tex0, bank, band);
+                g->band_dirty[bank][band] = 0;
+            }
+
+    if (g->luma_dirty) {   /* luma RAM: byte lane 0 of each 32-bit word (0x12800000) */
+        for (int i = 0; i < 0x8000; i++)
+            g->scratch[i] = b->luma[i * 2];
+        glBindTexture(GL_TEXTURE_2D, g->luma);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 128, 256, GL_LUMINANCE, GL_UNSIGNED_BYTE, g->scratch);
+        g->luma_dirty = 0;
+    }
+
+    if (g->colour_dirty) {
+        for (int cb = 0; cb < 1024; cb++) {
+            uint16_t c = ld16(b->pal + (0x1000 + cb) * 2) & 0x7fff;
+            const uint8_t *xr = b->xlat + 0x0000 + (c & 0x1f) * 0x200;
+            const uint8_t *xg = b->xlat + 0x4000 + ((c >> 5) & 0x1f) * 0x200;
+            const uint8_t *xb = b->xlat + 0x8000 + ((c >> 10) & 0x1f) * 0x200;
+            uint8_t *o = g->table + cb * 64 * 4;
+            for (int l = 0; l < 64; l++, o += 4) {
+                o[0] = t->gamma[0][t->remap[xr[l * 2]]];
+                o[1] = t->gamma[1][t->remap[xg[l * 2]]];
+                o[2] = t->gamma[2][t->remap[xb[l * 2]]];
+                o[3] = 255;
+            }
+        }
+        glBindTexture(GL_TEXTURE_2D, g->colour);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 64, 1024, GL_RGBA, GL_UNSIGNED_BYTE, g->table);
+        g->colour_dirty = 0;
+    }
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+}
+
+/* ------------------------------------------------------------ drawing */
+
+static void quad_attribs(m2_gl *g, int blit)
+{
+    glBindBuffer(GL_ARRAY_BUFFER, g->vbo_quad);
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glDisableVertexAttribArray(2);
+    glDisableVertexAttribArray(3);
+    const size_t base = blit ? 64 : 0;
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 16, (const void *)base);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16, (const void *)(base + 8));
+}
+
+/* the offscreen frame, (re)created when its size or filter changes */
+static void frame_buffer(m2_gl *g, int w, int h, int smooth)
+{
+    if (w == g->fb_w && h == g->fb_h && smooth == g->fb_smooth)
+        return;
+    glBindTexture(GL_TEXTURE_2D, g->fb_tex);
+    GLint f = smooth ? GL_LINEAR : GL_NEAREST;
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, f);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, f);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glBindFramebuffer(GL_FRAMEBUFFER, g->fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g->fb_tex, 0);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        fprintf(stderr, "m2gl: %dx%d framebuffer incomplete\n", w, h);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    g->fb_w = w;
+    g->fb_h = h;
+    g->fb_smooth = smooth;
+}
+
+/* The tile layers are 496 wide: centred in a wider frame (4:3 in the middle),
+   or stretched over all of it when the game's rule says so */
+static void draw_layers(m2_gl *g, float thr, int frame_w, int stretch_a, int stretch_b)
+{
+    glUseProgram(g->tile_prog);
+    glUniform1i(g->u_tile_tex, 0);
+    glUniform1f(g->u_tile_thr, thr);
+    quad_attribs(g, 0);
+    glActiveTexture(GL_TEXTURE0);
+    for (int i = 1; i >= 0; i--) {   /* layer B, then A */
+        int stretch = i ? stretch_b : stretch_a;
+        glUniform2f(g->u_tile_x, stretch ? 1.0f : (float)M2_SCREEN_W / (float)frame_w, 0.0f);
+        glBindTexture(GL_TEXTURE_2D, g->tex_tiles[i]);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
+}
+
+#define VFLOATS 12
+
+static void draw_polys(m2_gl *g, const m2_geo *geo, int frame_w, int scale, int meshblend)
+{
+    const float half_w = frame_w * 0.5f;
+    size_t need = 0;
+    for (int i = 0; i < geo->npolys; i++)
+        need += (size_t)(geo->polys[geo->order[i]].nverts - 2) * 3 * VFLOATS;
+    if (!need)
+        return;
+    if (need > g->verts_cap) {
+        float *nv = realloc(g->verts, need * sizeof(float));
+        if (!nv)
+            return;
+        g->verts = nv;
+        g->verts_cap = need;
+    }
+
+    float *o = g->verts;
+    for (int i = 0; i < geo->npolys; i++) {
+        const m2_gpoly *p = &geo->polys[geo->order[i]];
+        uint16_t t0 = p->th[0], t1 = p->th[1], t2 = p->th[2], t3 = p->th[3];
+        int textured = (t0 >> 14) & 1;
+        float ax = (float)(32 * (t2 & 0x3f)), ay = (float)(32 * ((t2 >> 6) & 0x1f));
+        if (t2 & 0x1000)
+            ay += 1024.0f;   /* sheet 1 */
+        float lumarow = (float)(t1 & 0xff) / 256.0f + 0.5f / 256.0f;
+        float colrow = ((float)((t3 >> 6) & 0x3ff) + 0.5f) / 1024.0f;
+        float lz = textured ? p->luma / 256.0f : ((p->luma >> 2) + 0.5f) / 64.0f;
+        float transl = (float)((t0 >> 13) & 1), checker = (float)((t0 >> 15) & 1);
+
+        float vx[M2_POLY_VERTS][6];
+        for (int k = 0; k < p->nverts; k++) {
+            const m2_gvert *v = &p->v[k];
+            vx[k][0] = (v->x / half_w - 1.0f) * v->z;
+            vx[k][1] = (1.0f - v->y / 192.0f) * v->z;
+            vx[k][2] = 0;
+            vx[k][3] = v->z;
+            vx[k][4] = (ax + v->u) / ATLAS;
+            vx[k][5] = (ay + v->v) / ATLAS;
+        }
+        for (int k = 1; k + 1 < p->nverts; k++) {
+            const int idx[3] = { 0, k, k + 1 };
+            for (int j = 0; j < 3; j++) {
+                memcpy(o, vx[idx[j]], 6 * sizeof(float));
+                o[6] = lumarow; o[7] = colrow; o[8] = lz; o[9] = transl;
+                o[10] = checker; o[11] = textured ? 0.0f : 1.0f;
+                o += VFLOATS;
+            }
+        }
+    }
+
+    glUseProgram(g->poly_prog);
+    glUniform1i(g->u_atlas, 0);
+    glUniform1i(g->u_luma, 1);
+    glUniform1i(g->u_colour, 2);
+    glUniform1f(g->u_scale, (float)scale);
+    glUniform1f(g->u_meshblend, meshblend ? 1.0f : 0.0f);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, g->atlas);
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, g->luma);
+    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, g->colour);
+    glActiveTexture(GL_TEXTURE0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, g->vbo_poly);
+    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(need * sizeof(float)), g->verts, GL_STREAM_DRAW);
+    const GLsizei st = VFLOATS * sizeof(float);
+    for (int a = 0; a < 4; a++)
+        glEnableVertexAttribArray((GLuint)a);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, st, (const void *)0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, st, (const void *)(4 * sizeof(float)));
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, st, (const void *)(6 * sizeof(float)));
+    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, st, (const void *)(10 * sizeof(float)));
+    if (meshblend) {   /* back to front already, so plain alpha blending is right */
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    }
+    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(need / VFLOATS));
+    glDisable(GL_BLEND);
+}
+
+void m2gl_draw(m2_gl *g, const m2_board *b, const m2_tilegen *t, const m2_geo *geo,
+               const m2_view *view, int width, int height)
+{
+    int frame_w = view->frame_w < M2_SCREEN_W ? M2_SCREEN_W : view->frame_w;
+    int scale = view->scale < 1 ? 1 : view->scale;
+
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_CULL_FACE);
+
+    if (geo)
+        upload_tables(g, b, t);
+    glActiveTexture(GL_TEXTURE0);
+    for (int i = 0; i < 2; i++) {
+        glBindTexture(GL_TEXTURE_2D, g->tex_tiles[i]);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, M2_SCREEN_W, M2_SCREEN_H, GL_RGBA,
+                        GL_UNSIGNED_BYTE, t->layer[i]);
+    }
+
+    /* the frame, at frame_w x 384 native pixels times the render scale */
+    frame_buffer(g, frame_w * scale, M2_SCREEN_H * scale, view->smooth);
+    glBindFramebuffer(GL_FRAMEBUFFER, g->fbo);
+    glViewport(0, 0, g->fb_w, g->fb_h);
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    draw_layers(g, 0.25f, frame_w, view->stretch & M2_STRETCH_A_LOW, view->stretch & M2_STRETCH_B_LOW);
+    if (geo)
+        draw_polys(g, geo, frame_w, scale, view->mesh_blend);
+    draw_layers(g, 0.75f, frame_w, view->stretch & M2_STRETCH_A_HIGH, view->stretch & M2_STRETCH_B_HIGH);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    /* scale to the window: 496 native pixels are 4:3, a wider frame is
+       proportionally wider */
+    double aspect = (4.0 / 3.0) * frame_w / M2_SCREEN_W;
+    int vw = width, vh = (int)(width / aspect + 0.5);
+    if (vh > height) {
+        vh = height;
+        vw = (int)(height * aspect + 0.5);
+    }
+    glViewport(0, 0, width, height);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glViewport((width - vw) / 2, (height - vh) / 2, vw, vh);
+    glUseProgram(g->post_prog);
+    glUniform1i(g->u_post_tex, 0);
+    glUniform1f(g->u_post_sat, view->saturation > 0 ? view->saturation : 1.0f);
+    glUniform2f(g->u_post_x, 1.0f, 0.0f);
+    quad_attribs(g, 1);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g->fb_tex);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+}
