@@ -44,6 +44,7 @@ Example, 16:9 fullscreen with a pad-friendly shifter:
 | `--gamma G` or `--gamma R,G,B` | 1.0 | colour gamma, as the original's GammaR/G/B (applies to tiles and 3D); above 1 brightens mid-tones |
 | `--shifter sequential\|hpattern` | hpattern | keyboard gears: one key per gear, or A/S step down/up (the original's UpDownGears) |
 | `--hold-gears` | off | H-pattern: drop to neutral when no gear key is held (the original's HoldGears) |
+| `--coop` | off | Daytona USA: two linked machines side by side, one per player (see "Linked play") |
 | `--pipeline on\|off` | on | on: the machine runs on its own thread, one frame ahead of the drawing (much faster on multi-core CPUs, one frame more input latency); off: emulate and draw each frame in turn |
 
 `-h` / `--help` (or no game name) prints a short usage summary and the game list.
@@ -132,6 +133,24 @@ ported from the original's Lua scripts, decide when it applies:
 - **VF2**: always, with the stage sky stretched (the original had no
   widescreen for VF2; this rule is new).
 
+## Linked play (`--coop`, Daytona USA)
+
+    build/m2emu --coop daytona
+
+Two complete Daytona boards run side by side in one window, linked through
+their network boards like two cabinets on the arcade's link: each player
+drives their own car and sees the other one on the track. Player 1 (left,
+red car 1) uses the keyboard and pad 1; player 2 (right, blue car 2) uses
+pad 2. Each side takes its own coin and start. Sound from both machines is
+mixed.
+
+The window starts twice as wide as usual. F3 resets both machines; the
+other keys work as in single play. Each machine keeps its own save data
+(`daytona-coop1.DAT`, `daytona-coop2.DAT`), separate from single play's;
+link mode and car number are set on every start. About twice the CPU of
+single play (one thread per machine). Only in-process linking so far: no
+LAN play between PCs yet.
+
 ## Save data
 
 Backup RAM and EEPROM (settings, high scores, bookkeeping) are saved to
@@ -147,6 +166,7 @@ over. With no file, Daytona starts with its link setting on "single"
 | `M2_ROMS` | m2emu | default ROM directory (`-r` overrides) |
 | `M2EMU_SHOT=file.ppm:N` | m2emu | save the window's picture at frame N, then quit |
 | `M2EMU_KEYS=frame:key:frames,...` | m2emu | press keys by script (`key` = DirectInput code in hex, e.g. `06` coin, `02` start, `c8` up) |
+| `M2EMU_KEYS2=...` | m2emu | the same for player 2 with `--coop` |
 | `M2EMU_BENCH=N` | m2emu | run N frames unthrottled and print a timing split |
 | `M2EMU_ACTIONS=iter:a,...` | m2emu | frontend actions by main-loop iteration: `p` pause/unpause, `r` reset (F3), `q` quit |
 
@@ -167,6 +187,7 @@ Controlled by environment variables:
 | `M2_GEO=1` | run the 3D geometrizer and print polygon counts |
 | `M2_PIPE=1` | pass the video through the frame hand-over (`m2pipe`) as `m2emu` does; with `M2_GEOHASH` the checksums must match a run without it |
 | `M2_RESET_AT=n` | reset the machine after frame n, as F3 |
+| `M2_COOP=1` | a second board linked to the first (Daytona), both run in lockstep; prints the link state; with `M2_SHOT` also writes `<file>.2.ppm` |
 | `M2_BENCH=1` | time the per-frame CPU work (emulation, tile layers, geometrizer, sound) and print ms per frame at the end |
 | `M2_GEOHASH=1` | run the geometrizer and tile layers every frame and print a checksum of their output (polygons in drawing order, both layers, the palette) every 300 frames; for checking that a change leaves the video output identical |
 | `M2_WAV=file.wav` | run the sound board and record its output; prints sound CPU state |

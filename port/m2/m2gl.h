@@ -45,6 +45,11 @@ typedef struct {
    wide_extra = (frame_w - 496) / 2. */
 void   m2gl_draw(m2_gl *g, const struct m2_board *b, const m2_tilegen *t, const m2_geo *geo,
                  const m2_view *view, int width, int height);
+/* The same into the window rectangle x, y, width, height (GL window
+   coordinates, origin bottom left); only that rectangle is cleared. For
+   several screens in one window (split screen). */
+void   m2gl_draw_rect(m2_gl *g, const struct m2_board *b, const m2_tilegen *t, const m2_geo *geo,
+                      const m2_view *view, int x, int y, int width, int height);
 
 #ifdef __cplusplus
 }

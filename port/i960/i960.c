@@ -1015,6 +1015,11 @@ const int i960_opdef_count = (int)(sizeof i960_opdefs / sizeof i960_opdefs[0]);
 
 static void build_optable(void)   /* orig 0x4c2740 */
 {
+    /* built once: other CPUs may be running (several boards, one process) */
+    static int built;
+    if (built)
+        return;
+    built = 1;
     for (int k = 0; k < 0x1000; k++)
         optable[k] = &invalid_opdef;
     for (int i = 0; i < i960_opdef_count; i++)

@@ -33,6 +33,7 @@ struct m2_snd {
     /* Model 2A */
     scsp *scsp;
 
+    void *ctx;                                   /* this board's Musashi context */
     int32_t mix[SLICE * 2];
     unsigned long chip_writes, commands, cmd_reads;
 
@@ -43,6 +44,17 @@ struct m2_snd {
 };
 
 static m2_snd *cur;   /* Musashi's callbacks are global */
+
+/* makes s the board Musashi runs (saving the other's context) */
+static void enter(m2_snd *s)
+{
+    if (cur == s)
+        return;
+    if (cur)
+        m68k_get_context(cur->ctx);
+    m68k_set_context(s->ctx);
+    cur = s;
+}
 
 /* ------------------------------------------------------------ helpers */
 
@@ -261,10 +273,13 @@ m2_snd *m2snd_create(const m2_board *b)
     s->samples_size = b->rom.size[6];
     s->ram_size = s->type == 0 ? M1_RAM_SIZE : M2A_RAM_SIZE;
     s->ram = calloc(1, s->ram_size + 2);
-    if (!s->ram || !s->prog) {
+    s->ctx = calloc(1, m68k_context_size());
+    if (!s->ram || !s->prog || !s->ctx) {
         m2snd_destroy(s);
         return NULL;
     }
+    if (cur)   /* keep the running board's CPU */
+        m68k_get_context(cur->ctx);
     cur = s;
     if (s->type == 0) {
         s->cycles_per_sample = 10000000.0 / M2SND_RATE;
@@ -287,6 +302,7 @@ m2_snd *m2snd_create(const m2_board *b)
     m68k_set_cpu_type(M68K_CPU_TYPE_68000);
     m68k_set_int_ack_callback(int_ack);
     m2snd_reset(s);
+    m68k_get_context(s->ctx);
     return s;
 }
 
@@ -299,6 +315,7 @@ void m2snd_destroy(m2_snd *s)
     if (s->ym) ym3438_destroy(s->ym);
     if (s->scsp) scsp_destroy(s->scsp);
     free(s->ram);
+    free(s->ctx);
     if (cur == s)
         cur = NULL;
     free(s);
@@ -306,7 +323,7 @@ void m2snd_destroy(m2_snd *s)
 
 void m2snd_reset(m2_snd *s)
 {
-    cur = s;
+    enter(s);
     memset(s->ram, 0, s->ram_size);
     s->fifo_rd = s->fifo_wr = 0;
     atomic_store(&s->qr, atomic_load(&s->qw));   /* drop pending commands */
@@ -365,7 +382,7 @@ static void drain(m2_snd *s)
 
 void m2snd_render(m2_snd *s, int16_t *out, int n)
 {
-    cur = s;
+    enter(s);
     while (n > 0) {
         int k = n < SLICE ? n : SLICE;
         drain(s);
@@ -395,7 +412,7 @@ void m2snd_render(m2_snd *s, int16_t *out, int n)
 #include <stdio.h>
 void m2snd_debug(m2_snd *s, char *buf, int size)
 {
-    cur = s;
+    enter(s);
     int a = 0, b = 0, mvol = 0;
     if (s->type == 0) {
         a = multipcm_voices_playing(s->pcm[0]);

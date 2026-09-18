@@ -4,7 +4,12 @@
  *   m2emu [-r romdir] [-n nvdir] [--vsync] [--fullscreen] [--size WxH]
  *         [--widescreen 16:9|16:10|off] [--scale N|auto] [--sharp]
  *         [--mesh blend|checker] [--saturation S] [--gamma G | --gamma R,G,B]
- *         [--shifter sequential|hpattern] [--hold-gears] [--pipeline on|off] <game>
+ *         [--shifter sequential|hpattern] [--hold-gears] [--pipeline on|off]
+ *         [--coop] <game>
+ *
+ * --coop (Daytona USA): two boards linked through their network boards, as
+ * two cabinets, in one window side by side; keyboard and pad 1 drive the
+ * left one, pad 2 the right one.
  *
  * Keys (from the original's input definitions): 5/6 coin, 1/2 start,
  * F1 service, F2 test, arrows, Z X C V / A S D F G game buttons.
@@ -17,6 +22,7 @@
 #include "../m2/m2geo.h"
 #include "../m2/m2gl.h"
 #include "../m2/m2input.h"
+#include "../m2/m2net.h"
 #include "../m2/m2pipe.h"
 #include "../m2/m2tile.h"
 #include "../m2/m2wide.h"
@@ -30,52 +36,113 @@
 #include <string.h>
 #include <sys/stat.h>
 
-static m2_tilegen tilegen;
-static m2_gl *gl;
-static m2_snd *snd;
+/* One emulated machine and everything that draws and plays it. Normally
+   one; with --coop two linked boards (split screen). */
+typedef struct {
+    m2_board *b;
+    m2_snd   *snd;
+    m2_pipe  *pipe;
+    m2_hooks  replay;              /* video hooks, called on the main thread */
+    m2_tilegen *tg;
+    m2_geo   *geo;
+    m2_gl    *gl;
+    m2_input_state in;
+    const m2_board *vb;            /* the drawn frame's video memories */
+    m2_pipe_frame pf;
+    char      nvpath[1200];
+    /* board thread: `go` starts a frame, `done` says it is captured;
+       between the two the main thread leaves the board alone */
+    SDL_Thread *thread;
+    SDL_sem  *go, *done;
+    int       quit;
+    Uint64    ticks;               /* time spent in the last frame */
+} player;
 
-static void on_tile(void *u, uint32_t o) { (void)u; m2tile_tile_written(&tilegen, o); }
-static void on_cg(void *u) { (void)u; m2tile_cg_written(&tilegen); }
-static void on_xlat(void *u) { (void)u; m2tile_xlat_written(&tilegen); if (gl) m2gl_xlat_written(gl); }
-static void on_tex(void *u, int bank, uint32_t o) { (void)u; if (gl) m2gl_texture_written(gl, bank, o); }
-static void on_luma(void *u) { (void)u; if (gl) m2gl_luma_written(gl); }
-static void on_pal(void *u, uint32_t o) { (void)u; m2tile_palette_written(&tilegen, o); if (gl) m2gl_palette_written(gl, o); }
-static void on_sound(void *u, uint8_t c) { (void)u; if (snd) m2snd_command(snd, c); }
+#define MAX_PLAYERS 2
+static player pl[MAX_PLAYERS];
+static int nplayers = 1;
 
-/* The sound board runs here, on SDL's audio thread, at the device's pace:
-   its tempo stays right even when the emulation can't keep full speed. */
+static void on_tile(void *u, uint32_t o) { m2tile_tile_written(((player *)u)->tg, o); }
+static void on_cg(void *u) { m2tile_cg_written(((player *)u)->tg); }
+static void on_xlat(void *u)
+{
+    player *p = u;
+    m2tile_xlat_written(p->tg);
+    if (p->gl) m2gl_xlat_written(p->gl);
+}
+static void on_tex(void *u, int bank, uint32_t o) { player *p = u; if (p->gl) m2gl_texture_written(p->gl, bank, o); }
+static void on_luma(void *u) { player *p = u; if (p->gl) m2gl_luma_written(p->gl); }
+static void on_pal(void *u, uint32_t o)
+{
+    player *p = u;
+    m2tile_palette_written(p->tg, o);
+    if (p->gl) m2gl_palette_written(p->gl, o);
+}
+static void on_sound(void *u, uint8_t c) { player *p = u; if (p->snd) m2snd_command(p->snd, c); }
+
+/* The sound boards run here, on SDL's audio thread, at the device's pace:
+   their tempo stays right even when the emulation can't keep full speed.
+   Two boards (--coop) are mixed. */
 static void audio_callback(void *u, Uint8 *stream, int len)
 {
-    m2snd_render(u, (int16_t *)stream, len / 4);
+    (void)u;
+    int16_t *out = (int16_t *)stream;
+    int n = len / 4;
+    if (nplayers == 1) {
+        m2snd_render(pl[0].snd, out, n);
+        return;
+    }
+    static int16_t a[1024 * 2], b[1024 * 2];
+    while (n > 0) {
+        int k = n < 1024 ? n : 1024;
+        memset(a, 0, sizeof(int16_t) * (size_t)k * 2);
+        memset(b, 0, sizeof(int16_t) * (size_t)k * 2);
+        if (pl[0].snd) m2snd_render(pl[0].snd, a, k);
+        if (pl[1].snd) m2snd_render(pl[1].snd, b, k);
+        for (int i = 0; i < k * 2; i++) {
+            int v = (a[i] + b[i]) * 3 / 4;   /* two cabinets' worth of sound */
+            out[i] = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+        }
+        out += k * 2;
+        n -= k;
+    }
 }
 
 /* The board runs on its own thread, one frame ahead of the renderer: while
    the main thread draws frame N (tiles, geometrizer, GL), this runs frame
-   N + 1 and hands it over through m2pipe. `go` starts a frame, `done` says
-   it is captured; between the two the main thread leaves the board alone. */
-typedef struct {
-    m2_board *b;
-    m2_pipe  *pipe;
-    SDL_sem  *go, *done;
-    int       quit;
-    Uint64    ticks;   /* time spent in the last frame */
-} emu_thread_ctx;
-
+   N + 1 and hands it over through m2pipe. */
 static int emu_thread(void *arg)
 {
-    emu_thread_ctx *c = arg;
+    player *p = arg;
     for (;;) {
-        SDL_SemWait(c->go);
-        if (c->quit)
+        SDL_SemWait(p->go);
+        if (p->quit)
             break;
         Uint64 t0 = SDL_GetPerformanceCounter();
-        m2_run_frame(c->b);
-        m2pipe_capture(c->pipe, c->b);
-        c->ticks = SDL_GetPerformanceCounter() - t0;
-        SDL_SemPost(c->done);
+        m2_run_frame(p->b);
+        m2pipe_capture(p->pipe, p->b);
+        p->ticks = SDL_GetPerformanceCounter() - t0;
+        SDL_SemPost(p->done);
     }
     return 0;
 }
+
+/* debugging: M2EMU_KEYS=frame:dik:frames,... (dik in hex) */
+static void script_keys(const char *script, uint32_t frame, uint8_t *key)
+{
+    for (const char *k = script; *k;) {
+        int at = 0, len = 0;
+        unsigned dik = 0;
+        if (sscanf(k, "%d:%x:%d", &at, &dik, &len) == 3 && dik < 256) {
+            if ((int)frame == at) key[dik] = 1;
+            if ((int)frame == at + len) key[dik] = 0;
+        }
+        k = strchr(k, ',');
+        if (!k) break;
+        k++;
+    }
+}
+
 static void logmsg(const char *m) { fprintf(stderr, "%s\n", m); }
 
 /* SDL scancode -> DirectInput scan code (PC set 1), for the keys games use */
@@ -140,7 +207,7 @@ int main(int argc, char **argv)
     int vsync = 0, fullscreen = 0, win_w = 0, win_h = 0, smooth = 1;
     int wide_on = 0, scale_opt = 0;   /* scale 0 = auto */
     double wide_ratio = 16.0 / 9.0;
-    int mesh_blend = 1, updown_gears = 0, hold_gears = 0, pipelined = 1;
+    int mesh_blend = 1, updown_gears = 0, hold_gears = 0, pipelined = 1, coop = 0;
     float saturation = 1.0f, gamma[3] = { 1.0f, 1.0f, 1.0f };
 
     for (int i = 1; i < argc; i++) {
@@ -152,6 +219,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--shifter") && i + 1 < argc) updown_gears = !strcmp(argv[++i], "sequential");
         else if (!strcmp(argv[i], "--hold-gears")) hold_gears = 1;
         else if (!strcmp(argv[i], "--pipeline") && i + 1 < argc) pipelined = strcmp(argv[++i], "off") != 0;
+        else if (!strcmp(argv[i], "--coop")) coop = 1;
         else if (!strcmp(argv[i], "--mesh") && i + 1 < argc) mesh_blend = strcmp(argv[++i], "checker") != 0;
         else if (!strcmp(argv[i], "--saturation") && i + 1 < argc) saturation = (float)atof(argv[++i]);
         else if (!strcmp(argv[i], "--gamma") && i + 1 < argc) {
@@ -176,7 +244,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "usage: m2emu [-r romdir] [-n nvdir] [--vsync] [--fullscreen] [--size WxH]\n"
                         "             [--widescreen 16:9|16:10|off] [--scale N|auto] [--sharp]\n"
                         "             [--mesh blend|checker] [--saturation S] [--gamma G | --gamma R,G,B]\n"
-                        "             [--shifter sequential|hpattern] [--hold-gears] [--pipeline on|off] <game>\n"
+                        "             [--shifter sequential|hpattern] [--hold-gears] [--pipeline on|off]\n"
+                        "             [--coop] <game>\n"
                         "keys: Esc quit, F3 reset, P pause, Tab fast forward, F7 saturation, F8 mesh,\n"
                         "      F9 widescreen, F10 scale, F11 fullscreen. Full guide: port/README.md\n"
                         "games:");
@@ -194,32 +263,56 @@ int main(int argc, char **argv)
     const m2_game *game = m2_find_game(game_name);
     if (!game) { fprintf(stderr, "unknown game %s\n", game_name); return 1; }
     const char *dirs[] = { romdir, NULL };
-    m2_board *b = m2_create(game, dirs, logmsg);
-    if (!b) return 1;
-
-    char nvpath[1200];
+    if (coop && strncmp(game->name, "daytona", 7)) {
+        fprintf(stderr, "--coop: only Daytona USA for now\n");
+        return 1;
+    }
+    nplayers = coop ? 2 : 1;
     mkdirs(nvdir);
-    snprintf(nvpath, sizeof nvpath, "%s/%s.DAT", nvdir, game->name);
-    if (!m2_nvram_load(b, nvpath))
-        printf("NVRAM loaded from %s\n", nvpath);
-    else if (m2_nvram_defaults(b))
-        printf("NVRAM: first-boot defaults\n");
-
     for (int c = 0; c < 3; c++)
         if (gamma[c] <= 0) gamma[c] = 1.0f;
-    m2tile_init(&tilegen, gamma[0], gamma[1], gamma[2]);
-    b->hooks.tilemap_written = on_tile;
-    b->hooks.cg_written = on_cg;
-    b->hooks.xlat_written = on_xlat;
-    b->hooks.texture_written = on_tex;
-    b->hooks.luma_written = on_luma;
-    b->hooks.palette_written = on_pal;
-    b->hooks.sound_command = on_sound;
-    snd = m2snd_create(b);
-    if (!snd)
-        fprintf(stderr, "no sound board (missing sound ROMs?)\n");
-    m2_geo *geo = m2geo_create();
-    if (!geo) return 1;
+
+    for (int i = 0; i < nplayers; i++) {
+        player *p = &pl[i];
+        p->b = m2_create(game, dirs, logmsg);
+        p->tg = malloc(sizeof *p->tg);
+        p->pipe = m2pipe_create();
+        p->geo = m2geo_create();
+        if (!p->b || !p->tg || !p->pipe || !p->geo) { fprintf(stderr, "out of memory\n"); return 1; }
+        /* linked boards keep their own save data (settings differ) */
+        if (coop) snprintf(p->nvpath, sizeof p->nvpath, "%s/%s-coop%d.DAT", nvdir, game->name, i + 1);
+        else snprintf(p->nvpath, sizeof p->nvpath, "%s/%s.DAT", nvdir, game->name);
+        if (!m2_nvram_load(p->b, p->nvpath))
+            printf("NVRAM loaded from %s\n", p->nvpath);
+        else if (m2_nvram_defaults(p->b))
+            printf("NVRAM: first-boot defaults\n");
+        if (coop)   /* player 1's board is the master, player 2's the slave; cars 1 and 2 */
+            m2_nvram_set_link(p->b, i == 0 ? 1 : 2, i + 1);
+
+        m2tile_init(p->tg, gamma[0], gamma[1], gamma[2]);
+        p->b->hooks.user = p;
+        p->b->hooks.tilemap_written = on_tile;
+        p->b->hooks.cg_written = on_cg;
+        p->b->hooks.xlat_written = on_xlat;
+        p->b->hooks.texture_written = on_tex;
+        p->b->hooks.luma_written = on_luma;
+        p->b->hooks.palette_written = on_pal;
+        p->b->hooks.sound_command = on_sound;
+        p->snd = m2snd_create(p->b);
+        if (!p->snd)
+            fprintf(stderr, "no sound board (missing sound ROMs?)\n");
+        p->replay = p->b->hooks;   /* the video hooks now run on the main thread */
+        m2pipe_attach(p->pipe, p->b);
+        p->in.updown_gears = updown_gears;   /* the original's UpDownGears / HoldGears */
+        p->in.hold_gears = hold_gears;
+        m2input_init(&p->in);
+    }
+    m2_net *net = NULL;
+    if (coop) {   /* the two boards' network boards, linked in a ring */
+        m2_board *ring[MAX_PLAYERS] = { pl[0].b, pl[1].b };
+        net = m2net_create(ring, nplayers);
+        if (!net) { fprintf(stderr, "out of memory\n"); return 1; }
+    }
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) < 0) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
@@ -234,7 +327,7 @@ int main(int argc, char **argv)
     snprintf(title, sizeof title, "%s - Model 2", game->title);
     if (win_w <= 0 || win_h <= 0) {
         win_h = 768;
-        win_w = (int)(win_h * (wide_on ? wide_ratio : 4.0 / 3.0) + 0.5);
+        win_w = (int)(win_h * (wide_on ? wide_ratio : 4.0 / 3.0) + 0.5) * nplayers;
     }
     SDL_Window *win = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_w, win_h,
                                        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE |
@@ -243,11 +336,11 @@ int main(int argc, char **argv)
     SDL_GLContext ctx = SDL_GL_CreateContext(win);
     if (!ctx) { fprintf(stderr, "GLES 2 context: %s\n", SDL_GetError()); return 1; }
     SDL_GL_SetSwapInterval(vsync);
-    gl = m2gl_create();
-    if (!gl) return 1;
+    for (int i = 0; i < nplayers; i++)
+        if (!(pl[i].gl = m2gl_create())) return 1;
 
     SDL_AudioDeviceID audio = 0;
-    if (snd) {
+    if (pl[0].snd || (coop && pl[1].snd)) {
         SDL_AudioSpec want, have;
         SDL_zero(want);
         want.freq = M2SND_RATE;
@@ -255,7 +348,6 @@ int main(int argc, char **argv)
         want.channels = 2;
         want.samples = 1024;
         want.callback = audio_callback;
-        want.userdata = snd;
         audio = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
         if (!audio)
             fprintf(stderr, "audio: %s\n", SDL_GetError());
@@ -276,10 +368,10 @@ int main(int argc, char **argv)
                        j, SDL_JoystickNameForIndex(j));
     }
     SDL_GameController *pads[2] = { NULL, NULL };
-    m2_input_state in;
-    in.updown_gears = updown_gears;   /* the original's UpDownGears / HoldGears */
-    in.hold_gears = hold_gears;
-    m2input_init(&in);
+    /* host controls as they arrive; handed to the players before each frame
+       (--coop: keyboard and pad 1 drive player 1, pad 2 player 2) */
+    m2_input_state raw;
+    memset(&raw, 0, sizeof raw);
 
     char shot_path[512] = "";
     int shot_frame = 0;
@@ -290,21 +382,22 @@ int main(int argc, char **argv)
     }
 
     const char *script = getenv("M2EMU_KEYS");
+    const char *script2 = getenv("M2EMU_KEYS2");   /* --coop: player 2's keys */
+    uint8_t key2[256];
+    memset(key2, 0, sizeof key2);
     const char *actions = getenv("M2EMU_ACTIONS");
     long iter = 0;
     int bench = getenv("M2EMU_BENCH") ? atoi(getenv("M2EMU_BENCH")) : 0;
     double bt[4] = { 0, 0, 0, 0 };
 
-    m2_pipe *pipe = m2pipe_create();
-    if (!pipe) { fprintf(stderr, "out of memory\n"); return 1; }
-    const m2_hooks replay = b->hooks;   /* the video hooks now run on this thread */
-    m2pipe_attach(pipe, b);
-    emu_thread_ctx ec = { b, pipe, SDL_CreateSemaphore(0), SDL_CreateSemaphore(0), 0, 0 };
-    SDL_Thread *emu = ec.go && ec.done ? SDL_CreateThread(emu_thread, "m2 board", &ec) : NULL;
-    if (!emu) { fprintf(stderr, "emulation thread: %s\n", SDL_GetError()); return 1; }
+    for (int i = 0; i < nplayers; i++) {
+        player *p = &pl[i];
+        p->go = SDL_CreateSemaphore(0);
+        p->done = SDL_CreateSemaphore(0);
+        p->thread = p->go && p->done ? SDL_CreateThread(emu_thread, "m2 board", p) : NULL;
+        if (!p->thread) { fprintf(stderr, "emulation thread: %s\n", SDL_GetError()); return 1; }
+    }
     int in_flight = 0, want_reset = 0;
-    const m2_board *vb = NULL;   /* the drawn frame's video memories */
-    m2_pipe_frame pf = { 0, { 0, 0 } };
 
     const double frame_s = 1.0 / game->fps;
     const double freq = (double)SDL_GetPerformanceFrequency();
@@ -341,7 +434,7 @@ int main(int argc, char **argv)
                 }
                 if (sc == SDL_SCANCODE_TAB) fast = down;
                 uint8_t dik = dik_from_sdl(sc);
-                if (dik) in.key[dik] = (uint8_t)down;
+                if (dik) raw.key[dik] = (uint8_t)down;
                 break;
             }
             case SDL_CONTROLLERDEVICEADDED:
@@ -359,8 +452,8 @@ int main(int argc, char **argv)
                         printf("pad %d disconnected\n", p + 1);
                         SDL_GameControllerClose(pads[p]);
                         pads[p] = NULL;
-                        memset(in.pad[p], 0, sizeof in.pad[p]);
-                        memset(in.axis[p], 0, sizeof in.axis[p]);
+                        memset(raw.pad[p], 0, sizeof raw.pad[p]);
+                        memset(raw.axis[p], 0, sizeof raw.axis[p]);
                     }
                 break;
             case SDL_CONTROLLERBUTTONDOWN:
@@ -368,14 +461,14 @@ int main(int argc, char **argv)
                 for (int p = 0; p < 2; p++)
                     if (pads[p] && SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pads[p])) == e.cbutton.which) {
                         int k = pad_button_from_sdl(e.cbutton.button);
-                        if (k >= 0) in.pad[p][k] = e.type == SDL_CONTROLLERBUTTONDOWN;
+                        if (k >= 0) raw.pad[p][k] = e.type == SDL_CONTROLLERBUTTONDOWN;
                     }
                 break;
             case SDL_CONTROLLERAXISMOTION:
                 for (int p = 0; p < 2; p++)
                     if (pads[p] && SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pads[p])) == e.caxis.which &&
                         e.caxis.axis < M2PAD_AXES)
-                        in.axis[p][e.caxis.axis] = e.caxis.value;
+                        raw.axis[p][e.caxis.axis] = e.caxis.value;
                 break;
             }
         }
@@ -397,98 +490,121 @@ int main(int argc, char **argv)
         }
         iter++;
 
-        /* collect the frame the board thread was running; from here until
-           the next go, the board is ours */
+        /* collect the frame the board threads were running; from here until
+           the next go, the boards are ours */
         Uint64 t0 = SDL_GetPerformanceCounter();
         int got = in_flight;
         if (in_flight) {
-            SDL_SemWait(ec.done);
+            for (int i = 0; i < nplayers; i++)
+                SDL_SemWait(pl[i].done);
             in_flight = 0;
+            if (net)   /* the ring, between the boards' frames */
+                m2net_frame(net);
         }
         Uint64 t1 = SDL_GetPerformanceCounter();
 
         if (want_reset) {   /* F3: reset, keeping backup RAM and EEPROM */
-            m2_nvram_save(b, nvpath);
-            m2_reset(b);
-            m2_nvram_load(b, nvpath);
-            m2pipe_invalidate(pipe);
             if (audio) SDL_LockAudioDevice(audio);
-            if (snd) m2snd_reset(snd);
+            for (int i = 0; i < nplayers; i++) {
+                player *p = &pl[i];
+                m2_nvram_save(p->b, p->nvpath);
+                m2_reset(p->b);
+                m2_nvram_load(p->b, p->nvpath);
+                m2pipe_invalidate(p->pipe);
+                if (net) m2net_reset(net, i);
+                if (p->snd) m2snd_reset(p->snd);
+            }
             if (audio) SDL_UnlockAudioDevice(audio);
             want_reset = 0;
         }
-        if (script) {   /* debugging: M2EMU_KEYS=frame:dik:frames,... (dik in hex) */
-            for (const char *k = script; *k;) {
-                int at = 0, len = 0;
-                unsigned dik = 0;
-                if (sscanf(k, "%d:%x:%d", &at, &dik, &len) == 3 && dik < 256) {
-                    if ((int)b->frame == at) in.key[dik] = 1;
-                    if ((int)b->frame == at + len) in.key[dik] = 0;
-                }
-                k = strchr(k, ',');
-                if (!k) break;
-                k++;
-            }
-        }
+        if (script)
+            script_keys(script, (uint32_t)pl[0].b->frame, raw.key);
+        if (script2)
+            script_keys(script2, (uint32_t)pl[0].b->frame, key2);
         if (!paused) {   /* start the next frame */
-            m2input_apply(&in, b);
+            if (!coop) {
+                memcpy(pl[0].in.key, raw.key, sizeof raw.key);
+                memcpy(pl[0].in.pad, raw.pad, sizeof raw.pad);
+                memcpy(pl[0].in.axis, raw.axis, sizeof raw.axis);
+            } else {
+                for (int i = 0; i < 2; i++) {
+                    m2_input_state *in = &pl[i].in;
+                    memcpy(in->key, i ? key2 : raw.key, sizeof in->key);
+                    memset(in->pad, 0, sizeof in->pad);
+                    memset(in->axis, 0, sizeof in->axis);
+                    memcpy(in->pad[0], raw.pad[i], sizeof in->pad[0]);
+                    memcpy(in->axis[0], raw.axis[i], sizeof in->axis[0]);
+                }
+            }
+            for (int i = 0; i < nplayers; i++)
+                m2input_apply(&pl[i].in, pl[i].b);
             frames++;
             if (pipelined) {
-                SDL_SemPost(ec.go);
+                for (int i = 0; i < nplayers; i++)
+                    SDL_SemPost(pl[i].go);
                 in_flight = 1;
-            } else {   /* --pipeline off: run it here and draw it now */
-                m2_run_frame(b);
-                m2pipe_capture(pipe, b);
+            } else {   /* --pipeline off: run them here and draw them now */
+                for (int i = 0; i < nplayers; i++) {
+                    m2_run_frame(pl[i].b);
+                    m2pipe_capture(pl[i].pipe, pl[i].b);
+                }
+                if (net)
+                    m2net_frame(net);
                 t1 = SDL_GetPerformanceCounter();
-                ec.ticks = t1 - t0;
+                pl[0].ticks = t1 - t0;
                 got = 1;
             }
         }
 
-        /* draw the collected frame (or the last one again) */
-        if (got)   /* after start and reset the pipe reports everything as written */
-            vb = m2pipe_apply(pipe, &replay, &pf);
+        /* draw the collected frames (or the last ones again), side by side */
         int w, h;
         SDL_GL_GetDrawableSize(win, &w, &h);
-        /* widescreen: a wider frame; the game's rule decides each frame
-           whether the 3D sees the extra width and which layers stretch */
-        m2_view view;
-        view.frame_w = wide_on ? ((int)(M2_SCREEN_W * wide_ratio * 0.75 + 0.5) + 1) & ~1 : M2_SCREEN_W;
-        view.stretch = wide_on ? pf.wide.stretch : 0;
-        view.smooth = smooth;
-        view.mesh_blend = mesh_blend;
-        view.saturation = saturation;
-        view.scale = scale_opt ? scale_opt : h / M2_SCREEN_H;
-        if (view.scale < 1) view.scale = 1;
-        geo->wide_extra = (view.frame_w - M2_SCREEN_W) * 0.5f;
-        geo->wide_fov = wide_on && pf.wide.widescreen;
-
-        if (got) {
-            m2tile_render(&tilegen, vb);
-            m2geo_run(geo, vb);
+        int vw = w / nplayers;
+        for (int i = 0; i < nplayers; i++) {
+            player *p = &pl[i];
+            if (got)   /* after start and reset the pipe reports everything as written */
+                p->vb = m2pipe_apply(p->pipe, &p->replay, &p->pf);
+            /* widescreen: a wider frame; the game's rule decides each frame
+               whether the 3D sees the extra width and which layers stretch */
+            m2_view view;
+            view.frame_w = wide_on ? ((int)(M2_SCREEN_W * wide_ratio * 0.75 + 0.5) + 1) & ~1 : M2_SCREEN_W;
+            view.stretch = wide_on ? p->pf.wide.stretch : 0;
+            view.smooth = smooth;
+            view.mesh_blend = mesh_blend;
+            view.saturation = saturation;
+            view.scale = scale_opt ? scale_opt : h / M2_SCREEN_H;
+            if (view.scale < 1) view.scale = 1;
+            p->geo->wide_extra = (view.frame_w - M2_SCREEN_W) * 0.5f;
+            p->geo->wide_fov = wide_on && p->pf.wide.widescreen;
+            if (got) {
+                m2tile_render(p->tg, p->vb);
+                m2geo_run(p->geo, p->vb);
+            }
+            if (p->vb)
+                m2gl_draw_rect(p->gl, p->vb, p->tg, p->geo, &view, i * vw, 0, i == nplayers - 1 ? w - i * vw : vw, h);
         }
-        Uint64 t2 = SDL_GetPerformanceCounter();
-        if (vb)
-            m2gl_draw(gl, vb, &tilegen, geo, &view, w, h);
+        const m2_pipe_frame *pf = &pl[0].pf;
         if (bench && got) {   /* M2EMU_BENCH=frames: unthrottled, timing split */
             glFinish();
             Uint64 t3 = SDL_GetPerformanceCounter();
-            bt[0] += (double)ec.ticks / freq;
+            Uint64 board = 0;
+            for (int i = 0; i < nplayers; i++)
+                if (pl[i].ticks > board) board = pl[i].ticks;
+            bt[0] += (double)board / freq;
             bt[1] += (double)(t1 - t0) / freq;
-            bt[2] += (double)(t2 - t1) / freq;
-            bt[3] += (double)(t3 - t2) / freq;
-            if (pf.frame == 1)
+            bt[3] += (double)(t3 - t1) / freq;
+            if (pf->frame == 1)
                 bench_t0 = SDL_GetPerformanceCounter() / freq;
-            if ((int)pf.frame >= bench) {
+            if ((int)pf->frame >= bench) {
                 double wall = SDL_GetPerformanceCounter() / freq - bench_t0;
-                printf("%d frames: %.1f fps | per frame: board %.2f ms (own thread), "
-                       "tiles+geo %.2f ms, gl %.2f ms, waiting for the board %.2f ms\n",
-                       bench, (bench - 1) / wall, bt[0] * 1000 / bench, bt[2] * 1000 / bench,
+                printf("%d frames: %.1f fps | per frame: board %.2f ms (own thread%s), "
+                       "tiles+geo+gl %.2f ms, waiting for the board %.2f ms\n",
+                       bench, (bench - 1) / wall, bt[0] * 1000 / bench, nplayers > 1 ? "s, slowest" : "",
                        bt[3] * 1000 / bench, bt[1] * 1000 / bench);
                 running = 0;
             }
         }
-        if (shot_frame && got && (int)pf.frame == shot_frame) {   /* debugging: M2EMU_SHOT=file.ppm:frame */
+        if (shot_frame && got && (int)pf->frame == shot_frame) {   /* debugging: M2EMU_SHOT=file.ppm:frame */
             unsigned char *px = malloc((size_t)w * h * 4);
             FILE *f = fopen(shot_path, "wb");
             if (px && f) {
@@ -513,9 +629,15 @@ int main(int argc, char **argv)
             SDL_Delay((Uint32)((next - now) * 1000.0));
         if (now - fps_t >= 1.0) {
             char gear[32] = "";
-            if (game->input_fn == 0x4c9080 || game->input_fn == 0x4cb870)
-                snprintf(gear, sizeof gear, " - gear %c", in.gear[0] ? '0' + in.gear[0] : 'N');
-            snprintf(title, sizeof title, "%s - Model 2 - %.1f fps%s%s%s", game->title,
+            if (game->input_fn == 0x4c9080 || game->input_fn == 0x4cb870) {
+                if (coop)
+                    snprintf(gear, sizeof gear, " - gears %c / %c",
+                             pl[0].in.gear[0] ? '0' + pl[0].in.gear[0] : 'N',
+                             pl[1].in.gear[0] ? '0' + pl[1].in.gear[0] : 'N');
+                else
+                    snprintf(gear, sizeof gear, " - gear %c", pl[0].in.gear[0] ? '0' + pl[0].in.gear[0] : 'N');
+            }
+            snprintf(title, sizeof title, "%s - Model 2%s - %.1f fps%s%s%s", game->title, coop ? " - linked" : "",
                      frames / (now - fps_t), gear, wide_on ? " - wide" : "", paused ? " (paused)" : "");
             SDL_SetWindowTitle(win, title);
             frames = 0;
@@ -523,23 +645,32 @@ int main(int argc, char **argv)
         }
     }
 
-    if (in_flight)
-        SDL_SemWait(ec.done);
-    ec.quit = 1;
-    SDL_SemPost(ec.go);
-    SDL_WaitThread(emu, NULL);
-    SDL_DestroySemaphore(ec.go);
-    SDL_DestroySemaphore(ec.done);
-    m2pipe_destroy(pipe);
-    if (m2_nvram_save(b, nvpath))
-        fprintf(stderr, "cannot save %s: %s\n", nvpath, strerror(errno));
+    for (int i = 0; i < nplayers; i++) {
+        player *p = &pl[i];
+        if (in_flight)
+            SDL_SemWait(p->done);
+        p->quit = 1;
+        SDL_SemPost(p->go);
+        SDL_WaitThread(p->thread, NULL);
+        SDL_DestroySemaphore(p->go);
+        SDL_DestroySemaphore(p->done);
+    }
     if (audio) SDL_CloseAudioDevice(audio);
-    m2snd_destroy(snd);
-    m2gl_destroy(gl);
-    m2geo_destroy(geo);
+    for (int i = 0; i < nplayers; i++) {
+        player *p = &pl[i];
+        if (m2_nvram_save(p->b, p->nvpath))
+            fprintf(stderr, "cannot save %s: %s\n", p->nvpath, strerror(errno));
+        m2pipe_destroy(p->pipe);
+        m2snd_destroy(p->snd);
+        m2gl_destroy(p->gl);
+        m2geo_destroy(p->geo);
+        free(p->tg);
+    }
+    m2net_destroy(net);
     SDL_GL_DeleteContext(ctx);
     SDL_DestroyWindow(win);
     SDL_Quit();
-    m2_destroy(b);
+    for (int i = 0; i < nplayers; i++)
+        m2_destroy(pl[i].b);
     return 0;
 }

@@ -4,6 +4,7 @@
 #include "m2input.h"
 #include "m2geo.h"
 #include "m2pipe.h"
+#include "m2net.h"
 #include "../snd/m2snd.h"
 
 #include <stdio.h>
@@ -49,6 +50,29 @@ static void on_io(void *u, uint32_t a, uint32_t v)
         if (!io_cnt[i] || io_addr[i] == a) { io_addr[i] = a; io_cnt[i]++; io_last[i] = v; return; }
 }
 static m2_board *board;
+
+/* M2_COOP=1: a second board, linked through the network ring */
+static m2_tilegen *tg2;
+static void on_tile2(void *u, uint32_t o) { (void)u; m2tile_tile_written(tg2, o); }
+static void on_pal2(void *u, uint32_t o) { (void)u; m2tile_palette_written(tg2, o); }
+static void on_xlat2(void *u) { (void)u; m2tile_xlat_written(tg2); }
+static void on_cg2(void *u) { (void)u; m2tile_cg_written(tg2); }
+
+static void write_shot(const char *path, m2_tilegen *t, const m2_board *b)
+{
+    m2tile_render(t, b);
+    FILE *f = fopen(path, "wb");
+    if (!f)
+        return;
+    fprintf(f, "P6\n%d %d\n255\n", M2_SCREEN_W, M2_SCREEN_H);
+    for (int i = 0; i < M2_SCREEN_W * M2_SCREEN_H; i++) {
+        uint16_t v = M2_TILE_PEN(t->layer[0][i]) ? t->layer[0][i] : t->layer[1][i];
+        uint32_t c = M2_TILE_PEN(v) ? t->pal[M2_TILE_INDEX(v)] : 0;
+        uint8_t rgb[3] = { (uint8_t)c, (uint8_t)(c >> 8), (uint8_t)(c >> 16) };
+        fwrite(rgb, 1, 3, f);
+    }
+    fclose(f);
+}
 static uint32_t prof_ip[4096], prof_n[4096];
 static int profiling;
 static void on_slice(void *u)
@@ -118,6 +142,24 @@ int main(int argc, char **argv)
         m2pipe_attach(pipe, b);
     const m2_board *vb = b;   /* what the renderers read */
     int reset_at = getenv("M2_RESET_AT") ? atoi(getenv("M2_RESET_AT")) : -1;
+
+    m2_board *b2 = NULL;
+    m2_net *net = NULL;
+    if (getenv("M2_COOP")) {   /* board 1 master, board 2 slave, one ring */
+        b2 = m2_create(g, dirs, logmsg);
+        tg2 = malloc(sizeof *tg2);
+        if (!b2 || !tg2) return 1;
+        m2_nvram_defaults(b2);
+        m2tile_init(tg2, 1.0f, 1.0f, 1.0f);
+        b2->hooks.tilemap_written = on_tile2;
+        b2->hooks.palette_written = on_pal2;
+        b2->hooks.xlat_written = on_xlat2;
+        b2->hooks.cg_written = on_cg2;
+        m2_nvram_set_link(b, 1, 1);
+        m2_nvram_set_link(b2, 2, 2);
+        m2_board *ring[2] = { b, b2 };
+        net = m2net_create(ring, 2);
+    }
     int io_from = getenv("M2_IOTRACE") ? atoi(getenv("M2_IOTRACE")) : -1;
     board = b;
     int prof_from = getenv("M2_PROF") ? atoi(getenv("M2_PROF")) : -1;
@@ -171,6 +213,16 @@ int main(int argc, char **argv)
             m2input_apply(&ins, b);
         }
         m2_run_frame(b);
+        if (b2) {
+            m2_run_frame(b2);
+            m2net_frame(net);
+            static int last[2] = { -1, -1 };
+            for (int k = 0; k < 2; k++)
+                if (m2net_state(net, k) != last[k]) {
+                    last[k] = m2net_state(net, k);
+                    printf("frame %d: board %d link state %d\n", f, k + 1, last[k]);
+                }
+        }
         if (reset_at == f) {   /* as the frontend's F3 */
             m2_reset(b);
             if (pipe)
@@ -276,17 +328,11 @@ int main(int argc, char **argv)
         if (f) { fwrite(b->ram, 1, 0x100000, f); fclose(f); }
     }
     if (getenv("M2_SHOT")) {   /* composited tile layers: B, then A on top */
-        m2tile_render(&tg, b);
-        FILE *f = fopen(getenv("M2_SHOT"), "wb");
-        if (f) {
-            fprintf(f, "P6\n%d %d\n255\n", M2_SCREEN_W, M2_SCREEN_H);
-            for (int i = 0; i < M2_SCREEN_W * M2_SCREEN_H; i++) {
-                uint16_t v = M2_TILE_PEN(tg.layer[0][i]) ? tg.layer[0][i] : tg.layer[1][i];
-                uint32_t c = M2_TILE_PEN(v) ? tg.pal[M2_TILE_INDEX(v)] : 0;
-                uint8_t rgb[3] = { (uint8_t)c, (uint8_t)(c >> 8), (uint8_t)(c >> 16) };
-                fwrite(rgb, 1, 3, f);
-            }
-            fclose(f);
+        write_shot(getenv("M2_SHOT"), &tg, b);
+        if (b2) {   /* the second board: <file>.2.ppm */
+            char p2[1024];
+            snprintf(p2, sizeof p2, "%s.2.ppm", getenv("M2_SHOT"));
+            write_shot(p2, tg2, b2);
         }
     }
     if (getenv("M2_DUMP"))

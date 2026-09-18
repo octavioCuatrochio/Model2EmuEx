@@ -427,7 +427,7 @@ static void w16_disp(void *u, uint32_t a, uint16_t v) { if (!(a & 0xfffff)) B(u)
 static void w8_disp(void *u, uint32_t a, uint8_t v)   { if (!(a & 0xfffff)) B(u)->display_ctrl = v; }
 static uint16_t r16_1080(void *u, uint32_t a) { (void)a; return ld16(B(u)->ram2 + 0xb940); }   /* orig 0x4c6e80 */
 
-/* network board 0x1a00000 (orig 0x4c7ba0 ... 0x4c7ae0); the shared RAM view
+/* network board 0x1a10000 (orig 0x4c7ba0 ... 0x4c7ae0); the shared RAM view
    starts at M2ZSHARED + 0x8000 */
 static uint8_t *zsh(m2_board *b) { return b->zshared + 0x8000; }
 static uint8_t r8_net(void *u, uint32_t a)
@@ -694,8 +694,8 @@ static void setup_map(m2_board *b)   /* orig 0x4cd450 */
     map_w(b, 0x180, 1, NULL, w8_pal, w16_pal, w32_pal);
     map_r(b, 0x181, 1, NULL, r8_xlat, r16_xlat, r32_xlat);
     map_w(b, 0x181, 1, NULL, w8_xlat, w16_xlat, w32_xlat);
-    map_r(b, 0x1a0, 1, NULL, r8_net, r16_net, r32_net);
-    map_w(b, 0x1a0, 1, NULL, w8_net, w16_net, w32_net);
+    map_r(b, 0x1a1, 1, NULL, r8_net, r16_net, r32_net);   /* orig: page 0x1a1 (table +0x1a54) */
+    map_w(b, 0x1a1, 1, NULL, w8_net, w16_net, w32_net);
     map_r(b, 0x1c0, 1, NULL, r8_io, r16_io, r32_io);
     map_w(b, 0x1c0, 1, NULL, w8_io, w16_io, w32_nop);
     map_r(b, 0x1d0, 1, b->back, NULL, NULL, NULL);
@@ -825,6 +825,7 @@ void m2_reset(m2_board *b)   /* orig 0x4cd450, after allocation */
     b->drive_last = 0xff;   /* orig 0x57285b starts as 0xff */
     b->frame_flags = 0;
     b->prev_fps = 60;
+    b->net_reg0 = b->net_reg2 = 0;   /* orig 0x5a96bd, 0x5aa760 */
     memset(b->port, 0xff, sizeof b->port);
     ee_init(&b->eeprom);
 
@@ -934,6 +935,28 @@ static uint16_t crc16_xmodem(const uint8_t *p, size_t n)
    "CANCELLED / NETWORK BOARD NOT PRESENT" and resets, forever, until an
    operator sets the cabinet to single in test mode. Seed both copies with the
    defaults and link mode 0 (standalone). */
+/* Daytona's settings: two copies (backup RAM 0x00 and 0x80) of the 0x80-byte
+   block that starts "SEGA@", CRC-16/XMODEM at +8 over +0x0a..+0x7f. */
+static void daytona_settings_crc(uint8_t *d) { st16(d + 8, crc16_xmodem(d + 0x0a, 0x76)); }
+
+int m2_nvram_set_link(m2_board *b, int mode, int car)
+{
+    if (strncmp(b->game->name, "daytona", 7))
+        return 0;
+    int done = 0;
+    for (int copy = 0; copy < 2; copy++) {
+        uint8_t *d = b->back + copy * 0x80;
+        if (memcmp(d, "SEGA@", 5))
+            continue;
+        d[0x0b] = (uint8_t)mode;
+        if (car > 0)
+            d[0x0c] = (uint8_t)(car - 1);   /* shown as 1-8 */
+        daytona_settings_crc(d);
+        done = 1;
+    }
+    return done;
+}
+
 int m2_nvram_defaults(m2_board *b)
 {
     const uint8_t *rom = b->rom.ptr[0];
@@ -949,7 +972,7 @@ int m2_nvram_defaults(m2_board *b)
             uint8_t *d = b->back + copy * 0x80;
             memcpy(d, rom + o, 0x80);
             d[0x0b] = 0;
-            st16(d + 8, crc16_xmodem(d + 0x0a, 0x76));
+            daytona_settings_crc(d);
         }
         return 1;
     }

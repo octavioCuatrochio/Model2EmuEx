@@ -8,6 +8,10 @@
  * segam1audio.cpp and model2.cpp. The 68000 is Musashi (the original's
  * A68K is x86 assembly). Output: 44.1 kHz stereo.
  *
+ * Several boards: Musashi is one global CPU, so each board keeps its own
+ * saved context and the calls below switch to it. Calls for different
+ * boards must not run at the same time (render them from one thread).
+ *
  * Threads: m2snd_command may run on one thread (the emulation) while
  * m2snd_render runs on another (the audio callback); commands go through a
  * lock-free queue and reach the board at the next 16-sample slice. Every
@@ -27,7 +31,6 @@ typedef struct m2_snd m2_snd;
 
 #define M2SND_RATE 44100
 
-/* only one instance at a time (Musashi is a single global CPU) */
 m2_snd *m2snd_create(const struct m2_board *b);
 void    m2snd_destroy(m2_snd *s);
 void    m2snd_reset(m2_snd *s);

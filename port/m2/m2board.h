@@ -121,6 +121,10 @@ int  m2_nvram_save(const m2_board *b, const char *path);
 /* First-boot settings for games whose factory defaults don't boot on a
    standalone machine (Daytona USA: linked cabinet). Returns 1 if applied. */
 int  m2_nvram_defaults(m2_board *b);
+/* Daytona: sets the link mode in the backup RAM settings (0 single,
+   1 master, 2 slave) and, if car > 0, the car number (1-8), for linked
+   play; 0 if there are no settings. */
+int  m2_nvram_set_link(m2_board *b, int mode, int car);
 
 #ifdef __cplusplus
 }

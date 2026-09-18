@@ -9,7 +9,7 @@ CFLAGS   += -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -MMD -MP
 CXXFLAGS += -std=c++14 -Wall -MMD -MP
 BUILD    := build
 
-CORE_C := i960/i960.c tgp/tgp.c m2/m2board.c m2/m2rom.c m2/m2tile.c m2/m2input.c m2/m2geo.c m2/m2wide.c m2/m2pipe.c \
+CORE_C := i960/i960.c tgp/tgp.c m2/m2board.c m2/m2rom.c m2/m2tile.c m2/m2input.c m2/m2geo.c m2/m2wide.c m2/m2pipe.c m2/m2net.c \
           snd/m2snd.c snd/scsp.c snd/multipcm.c
 M68K_C := m68k/m68kcpu.c m68k/m68kops.c m68k/softfloat/softfloat.c
 CORE_CXX := snd/ym3438.cpp ymfm/ymfm_opn.cpp ymfm/ymfm_adpcm.cpp ymfm/ymfm_ssg.cpp

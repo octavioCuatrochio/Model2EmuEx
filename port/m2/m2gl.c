@@ -490,6 +490,12 @@ static void draw_polys(m2_gl *g, const m2_geo *geo, int frame_w, int scale, int 
 void m2gl_draw(m2_gl *g, const m2_board *b, const m2_tilegen *t, const m2_geo *geo,
                const m2_view *view, int width, int height)
 {
+    m2gl_draw_rect(g, b, t, geo, view, 0, 0, width, height);
+}
+
+void m2gl_draw_rect(m2_gl *g, const m2_board *b, const m2_tilegen *t, const m2_geo *geo,
+                    const m2_view *view, int x, int y, int width, int height)
+{
     int frame_w = view->frame_w < M2_SCREEN_W ? M2_SCREEN_W : view->frame_w;
     int scale = view->scale < 1 ? 1 : view->scale;
 
@@ -536,9 +542,12 @@ void m2gl_draw(m2_gl *g, const m2_board *b, const m2_tilegen *t, const m2_geo *g
         vh = height;
         vw = (int)(height * aspect + 0.5);
     }
-    glViewport(0, 0, width, height);
+    glViewport(x, y, width, height);
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(x, y, width, height);
     glClear(GL_COLOR_BUFFER_BIT);
-    glViewport((width - vw) / 2, (height - vh) / 2, vw, vh);
+    glDisable(GL_SCISSOR_TEST);
+    glViewport(x + (width - vw) / 2, y + (height - vh) / 2, vw, vh);
     glUseProgram(g->post_prog);
     glUniform1i(g->u_post_tex, 0);
     glUniform1f(g->u_post_sat, view->saturation > 0 ? view->saturation : 1.0f);

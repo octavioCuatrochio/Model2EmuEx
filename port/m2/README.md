@@ -11,6 +11,7 @@ Files:
 - `m2geo.c/h`: 3D geometrizer and rasterizer front end (display list → sorted, clipped, projected polygons).
 - `m2gl.c/h`: OpenGL ES 2 renderer (tile layers, polygons, colour pipeline in shaders).
 - `m2wide.c/h`: per-game widescreen rules (from the original's Lua scripts).
+- `m2net.c/h`: network board ring between boards in one process (linked play, `m2emu --coop`).
 - `m2pipe.c/h`: frame hand-over, so the board and the renderer can run on different threads (copies of the video memories, notifications replayed on the render side).
 - `m2input.c/h`: host controls → input ports, from the original's per-game input definitions.
 - `m2board.c/h`: the board, NVRAM load/save/defaults.
