@@ -344,11 +344,18 @@ static void irq_dispatch(m2_board *b)   /* orig 0x4cc670 */
 #define HOOK(name, ...) do { if (b->hooks.name) b->hooks.name(b->hooks.user, ##__VA_ARGS__); } while (0)
 
 /* tilemaps 0x1000000-0x102ffff, orig 0x4cc3f0 / 0x4cc390 / 0x4cc300 */
+/* every tile RAM write is reported (the tile generator skips work when
+   nothing changed); the original only re-decodes for maps and window masks */
 static void tile_note(m2_board *b, uint32_t a)
 {
-    if (a < 0x1008000 || a - 0x100c000 < 0x2000)
-        HOOK(tilemap_written, a & 0xffff);
+    HOOK(tilemap_written, a & 0xffff);
 }
+
+/* the 0x1100000 mirror is plain memory in the original: no re-decode. It is
+   reported with bit 16 set, so a renderer can still see the change. */
+static void w8_tilem(void *u, uint32_t a, uint8_t v)   { m2_board *b = B(u); b->tile[a & 0xffff] = v; HOOK(tilemap_written, (a & 0xffff) | 0x10000); }
+static void w16_tilem(void *u, uint32_t a, uint16_t v) { m2_board *b = B(u); if ((a & 0xffff) <= 0xfffe) st16(b->tile + (a & 0xffff), v); HOOK(tilemap_written, (a & 0xffff) | 0x10000); }
+static void w32_tilem(void *u, uint32_t a, uint32_t v) { m2_board *b = B(u); if ((a & 0xffff) <= 0xfffc) st32(b->tile + (a & 0xffff), v); HOOK(tilemap_written, (a & 0xffff) | 0x10000); }
 static void w8_tile(void *u, uint32_t a, uint8_t v)   { m2_board *b = B(u); b->tile[a & 0xffff] = v; tile_note(b, a); }
 static void w16_tile(void *u, uint32_t a, uint16_t v) { m2_board *b = B(u); if ((a & 0xffff) <= 0xfffe) st16(b->tile + (a & 0xffff), v); tile_note(b, a); }
 static void w32_tile(void *u, uint32_t a, uint32_t v)
@@ -664,7 +671,7 @@ static void setup_map(m2_board *b)   /* orig 0x4cd450 */
     map_r(b, 0x108, 8, b->cg, NULL, NULL, NULL);
     map_w(b, 0x108, 8, NULL, w8_cg, w16_cg, w32_cg);
     map_r(b, 0x110, 1, b->tile, NULL, NULL, NULL);
-    map_w(b, 0x110, 1, b->tile, NULL, NULL, NULL);
+    map_w(b, 0x110, 1, NULL, w8_tilem, w16_tilem, w32_tilem);
     map_r(b, 0x118, 8, b->cg, NULL, NULL, NULL);
     map_w(b, 0x118, 8, b->cg, NULL, NULL, NULL);
 

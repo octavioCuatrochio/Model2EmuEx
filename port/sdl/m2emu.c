@@ -38,7 +38,7 @@ static void on_cg(void *u) { (void)u; m2tile_cg_written(&tilegen); }
 static void on_xlat(void *u) { (void)u; m2tile_xlat_written(&tilegen); if (gl) m2gl_xlat_written(gl); }
 static void on_tex(void *u, int bank, uint32_t o) { (void)u; if (gl) m2gl_texture_written(gl, bank, o); }
 static void on_luma(void *u) { (void)u; if (gl) m2gl_luma_written(gl); }
-static void on_pal(void *u, uint32_t o) { (void)u; if (gl) m2gl_palette_written(gl, o); }
+static void on_pal(void *u, uint32_t o) { (void)u; m2tile_palette_written(&tilegen, o); if (gl) m2gl_palette_written(gl, o); }
 static void on_sound(void *u, uint8_t c) { (void)u; if (snd) m2snd_command(snd, c); }
 static void logmsg(const char *m) { fprintf(stderr, "%s\n", m); }
 

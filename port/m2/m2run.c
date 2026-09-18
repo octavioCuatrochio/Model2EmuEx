@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 void m2_dump_tilemaps(const m2_board *b, const char *prefix, int nib_order);
 
@@ -15,13 +16,20 @@ static void logmsg(const char *m) { fprintf(stderr, "%s\n", m); }
 
 static m2_tilegen tg;
 
+static double now_ms(void)
+{
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec * 1e3 + t.tv_nsec / 1e6;
+}
+
 typedef struct {
     unsigned long tile, pal, tex, luma, xlat, cg, sound, invalid;
     uint32_t last_invalid_addr, last_invalid_raw;
 } stats;
 
 static void on_tile(void *u, uint32_t o) { ((stats *)u)->tile++; m2tile_tile_written(&tg, o); }
-static void on_pal(void *u, uint32_t o) { (void)o; ((stats *)u)->pal++; }
+static void on_pal(void *u, uint32_t o) { ((stats *)u)->pal++; m2tile_palette_written(&tg, o); }
 static void on_tex(void *u, int bank, uint32_t o) { (void)bank; (void)o; ((stats *)u)->tex++; }
 static void on_luma(void *u) { ((stats *)u)->luma++; }
 static void on_xlat(void *u) { ((stats *)u)->xlat++; m2tile_xlat_written(&tg); }
@@ -105,6 +113,12 @@ int main(int argc, char **argv)
     board = b;
     int prof_from = getenv("M2_PROF") ? atoi(getenv("M2_PROF")) : -1;
     const char *keys = getenv("M2_KEYS");
+    int bench = getenv("M2_BENCH") != NULL;   /* full per-frame CPU work, timed */
+    double tb[4] = { 0, 0, 0, 0 };
+    if (bench) {
+        m2tile_init(&tg, 1, 1, 1);
+        if (!getenv("M2_WAV")) setenv("M2_WAV", "/dev/null", 1);
+    }
     FILE *wav = NULL;
     uint32_t wav_samples = 0;
     double sample_debt = 0;
@@ -113,7 +127,7 @@ int main(int argc, char **argv)
         wav = fopen(getenv("M2_WAV"), "wb");
         if (wav) fwrite("RIFF\0\0\0\0WAVEfmt \x10\0\0\0\x01\0\x02\0\x44\xac\0\0\x10\xb1\x02\0\x04\0\x10\0data\0\0\0\0", 1, 44, wav);
     }
-    m2_geo *geo = getenv("M2_GEO") ? m2geo_create() : NULL;
+    m2_geo *geo = getenv("M2_GEO") || getenv("M2_BENCH") ? m2geo_create() : NULL;
     m2_input_state ins;
     m2input_init(&ins);
 
@@ -123,12 +137,15 @@ int main(int argc, char **argv)
             sample_debt += (double)M2SND_RATE / b->game->fps;
             int n = (int)sample_debt;
             sample_debt -= n;
+            double ts = now_ms();
             m2snd_render(snd, buf, n);
+            tb[3] += now_ms() - ts;
             if (wav) fwrite(buf, 4, (size_t)n, wav);
             wav_samples += (uint32_t)n;
         }
         profiling = prof_from >= 0 && f >= prof_from;
         io_tracing = io_from >= 0 && f >= io_from;
+        double t0 = now_ms();
         if (keys) {   /* M2_KEYS=frame:dik:frames,... (dik in hex) */
             memset(ins.key, 0, sizeof ins.key);
             for (const char *k = keys; *k;) {
@@ -143,6 +160,14 @@ int main(int argc, char **argv)
             m2input_apply(&ins, b);
         }
         m2_run_frame(b);
+        if (bench) {
+            double t1 = now_ms();
+            m2tile_render(&tg, b);
+            double t2 = now_ms();
+            m2geo_run(geo, b);
+            double t3 = now_ms();
+            tb[0] += t1 - t0; tb[1] += t2 - t1; tb[2] += t3 - t2;
+        }
         if (f == 1 || f % 60 == 0 || f == frames || (getenv("M2_FROM") && f >= atoi(getenv("M2_FROM")) && f <= atoi(getenv("M2_TO")))) {
             printf("frame %4d: ip=%08x busy=%3u%% irq en=%03x pend=%03x | tile %lu pal %lu tex %lu cg %lu snd %lu | "
                    "tgp prog %u B, pc %04x | bufram %u nz, ram %u nz | invalid %lu",
@@ -205,7 +230,8 @@ int main(int argc, char **argv)
         if (f) {
             fprintf(f, "P6\n%d %d\n255\n", M2_SCREEN_W, M2_SCREEN_H);
             for (int i = 0; i < M2_SCREEN_W * M2_SCREEN_H; i++) {
-                uint32_t c = tg.layer[0][i] >> 24 ? tg.layer[0][i] : tg.layer[1][i];
+                uint16_t v = M2_TILE_PEN(tg.layer[0][i]) ? tg.layer[0][i] : tg.layer[1][i];
+                uint32_t c = M2_TILE_PEN(v) ? tg.pal[M2_TILE_INDEX(v)] : 0;
                 uint8_t rgb[3] = { (uint8_t)c, (uint8_t)(c >> 8), (uint8_t)(c >> 16) };
                 fwrite(rgb, 1, 3, f);
             }
@@ -214,6 +240,10 @@ int main(int argc, char **argv)
     }
     if (getenv("M2_DUMP"))
         m2_dump_tilemaps(b, getenv("M2_DUMP"), getenv("M2_NIB") ? atoi(getenv("M2_NIB")) : 2);
+    if (bench)
+        printf("bench %d frames, ms/frame: emu %.3f  tiles %.3f  geo %.3f  sound %.3f  total %.3f\n", frames,
+               tb[0] / frames, tb[1] / frames, tb[2] / frames, tb[3] / frames,
+               (tb[0] + tb[1] + tb[2] + tb[3]) / frames);
     if (wav) {
         uint32_t data = wav_samples * 4, riff = data + 36;
         fseek(wav, 4, SEEK_SET); fwrite(&riff, 4, 1, wav);

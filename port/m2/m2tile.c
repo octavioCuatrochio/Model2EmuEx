@@ -1,8 +1,11 @@
-/* Model 2 text/tile layers; see m2tile.h and QUIRKS.md ("Tile layers"). */
+/* Model 2 text/tile layers; see m2tile.h and QUIRKS.md ("Tile layers").
+   The layers hold palette indices: composing a line is a copy with
+   wrap-around, and the colour lookup happens in the renderer. */
 #include "m2tile.h"
 #include "m2board.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 static uint16_t ld16(const uint8_t *p) { uint16_t v; memcpy(&v, p, 2); return v; }
@@ -20,14 +23,18 @@ void m2tile_init(m2_tilegen *t, float gamma_r, float gamma_g, float gamma_b)
         t->remap[i] = (uint8_t)(v < 1 ? 0 : v);
     }
     t->maps_dirty = 1;
+    t->ram_dirty = 1;
     t->colours_dirty = 1;
+    t->pal_dirty = 1;
     t->window_enable = 1;
 }
 
+/* offset: tile RAM offset; bit 16 = write through the 0x1100000 mirror,
+   which the original doesn't re-decode (QUIRKS.md) */
 void m2tile_tile_written(m2_tilegen *t, uint32_t offset)
 {
-    offset &= 0xffff;
-    if (offset < 0x8000) {   /* the four maps; window masks need no decode */
+    t->ram_dirty = 1;
+    if (offset < 0x8000) {   /* the four maps; other areas need no decode */
         uint32_t m = offset >> 13, i = (offset >> 1) & 0xfff;
         t->tile_dirty[m][i >> 3] |= (uint8_t)(1u << (i & 7));
         t->any_tile_dirty = 1;
@@ -36,6 +43,11 @@ void m2tile_tile_written(m2_tilegen *t, uint32_t offset)
 
 void m2tile_cg_written(m2_tilegen *t) { t->maps_dirty = 1; }
 void m2tile_xlat_written(m2_tilegen *t) { t->colours_dirty = 1; }
+void m2tile_palette_written(m2_tilegen *t, uint32_t offset)
+{
+    if ((offset & 0x3fff) < 0x2000)   /* the 4096 tile colours */
+        t->pal_dirty = 1;
+}
 
 /* orig 0x4c6b10, but keeping 8 bits per channel (the original also keeps a
    4-bit copy for its A4R4G4B4 tile textures, see QUIRKS.md) */
@@ -69,9 +81,10 @@ static void decode_tile(m2_tilegen *t, const uint8_t *tile, const uint8_t *cg, i
     }
 }
 
-/* orig 0x4c0410 */
-static void decode_maps(m2_tilegen *t, const uint8_t *tile, const uint8_t *cg)
+/* orig 0x4c0410; returns 1 if any map pixel may have changed */
+static int decode_maps(m2_tilegen *t, const uint8_t *tile, const uint8_t *cg)
 {
+    int changed = t->maps_dirty || t->any_tile_dirty;
     if (t->maps_dirty) {
         for (int m = 0; m < 4; m++)
             for (int i = 0; i < 4096; i++)
@@ -84,39 +97,27 @@ static void decode_maps(m2_tilegen *t, const uint8_t *tile, const uint8_t *cg)
                         if (t->tile_dirty[m][k] & (1u << j))
                             decode_tile(t, tile, cg, m, k * 8 + j);
     }
-    memset(t->tile_dirty, 0, sizeof t->tile_dirty);
+    if (t->any_tile_dirty)
+        memset(t->tile_dirty, 0, sizeof t->tile_dirty);
     t->any_tile_dirty = 0;
     t->maps_dirty = 0;
-}
-
-/* One source pixel to the layer: pen 0 transparent, bit 12 = priority.
-   `low`/`high` are the layer's flag bits (A: 1/2, B: 4/8). */
-static inline uint32_t pixel(m2_tilegen *t, uint16_t v, uint32_t low, uint32_t high)
-{
-    uint32_t c;
-    if (v & 0x1000) {
-        t->flags |= high;
-        c = (t->pal[v & 0xfff] & 0x00ffffffu) | (uint32_t)M2_TILE_HIGH << 24;
-    } else {
-        t->flags |= low;
-        c = (t->pal[v & 0xfff] & 0x00ffffffu) | (uint32_t)M2_TILE_LOW << 24;
-    }
-    return (v & 15) ? c : 0;
+    return changed;
 }
 
 /* orig 0x452000 / 0x452740: one map, wrapping at 512 */
-static void line_copy(m2_tilegen *t, uint32_t *out, const uint16_t *row, uint32_t x,
-                      uint32_t low, uint32_t high)
+static void line_copy(uint16_t *out, const uint16_t *row, uint32_t x)
 {
-    for (int i = 0; i < M2_SCREEN_W; i++) {
-        out[i] = pixel(t, row[x], low, high);
-        x = (x + 1) & 0x1ff;
+    int n1 = 512 - (int)x;   /* pixels before the wrap */
+    if (n1 >= M2_SCREEN_W) {
+        memcpy(out, row + x, M2_SCREEN_W * 2);
+    } else {
+        memcpy(out, row + x, (size_t)n1 * 2);
+        memcpy(out + n1, row, (size_t)(M2_SCREEN_W - n1) * 2);
     }
 }
 
 /* orig 0x451e90 / 0x4525c0: two maps side by side (1024 wide) */
-static void line_wide(m2_tilegen *t, uint32_t *out, const uint16_t *row, const uint16_t *other,
-                      uint32_t x, uint32_t low, uint32_t high)
+static void line_wide(uint16_t *out, const uint16_t *row, const uint16_t *other, uint32_t x)
 {
     if (x & 0x200) {
         const uint16_t *s = row;
@@ -124,29 +125,47 @@ static void line_wide(m2_tilegen *t, uint32_t *out, const uint16_t *row, const u
         other = s;
         x &= 0x1ff;
     }
-    for (int i = 0; i < M2_SCREEN_W; i++) {
-        out[i] = pixel(t, row[x], low, high);
-        if (++x & 0x200) {
-            x = 0;
-            row = other;
-        }
+    int n1 = 512 - (int)x;
+    if (n1 >= M2_SCREEN_W) {
+        memcpy(out, row + x, M2_SCREEN_W * 2);
+    } else {
+        memcpy(out, row + x, (size_t)n1 * 2);
+        memcpy(out + n1, other, (size_t)(M2_SCREEN_W - n1) * 2);
+    }
+}
+
+/* copies n pixels from a 512-wide row starting at x, with wrap */
+static inline void copy_wrap(uint16_t *out, const uint16_t *row, uint32_t x, int n)
+{
+    int n1 = 512 - (int)x;
+    if (n1 >= n) {
+        memcpy(out, row + x, (size_t)n * 2);
+    } else {
+        memcpy(out, row + x, (size_t)n1 * 2);
+        memcpy(out + n1, row, (size_t)(n - n1) * 2);
     }
 }
 
 /* orig 0x452150 / 0x4528b0: per 8-pixel column, a mask bit picks the map;
    both scroll positions advance either way */
-static void line_window(m2_tilegen *t, uint32_t *out, const uint16_t *row1, uint32_t x1,
-                        const uint16_t *row2, uint32_t x2, const uint8_t *mask,
-                        uint32_t low, uint32_t high)
+static void line_window(uint16_t *out, const uint16_t *row1, uint32_t x1,
+                        const uint16_t *row2, uint32_t x2, const uint8_t *mask)
 {
-    for (int col = 0; col < M2_SCREEN_W / 8; col++) {
+    int col = 0;
+    while (col < M2_SCREEN_W / 8) {
+        /* a run of columns from the same map is one copy */
         int second = (ld16(mask + (col >> 4) * 2) >> (15 - (col & 15))) & 1;
-        for (int k = 0; k < 8; k++) {
-            uint16_t v = second ? row2[x2] : row1[x1];
-            *out++ = pixel(t, v, low, high);
-            x1 = (x1 + 1) & 0x1ff;
-            x2 = (x2 + 1) & 0x1ff;
-        }
+        int end = col + 1;
+        while (end < M2_SCREEN_W / 8 &&
+               ((ld16(mask + (end >> 4) * 2) >> (15 - (end & 15))) & 1) == second)
+            end++;
+        int n = (end - col) * 8;
+        uint32_t off = (uint32_t)col * 8;
+        if (second)
+            copy_wrap(out + off, row2, (x2 + off) & 0x1ff, n);
+        else
+            copy_wrap(out + off, row1, (x1 + off) & 0x1ff, n);
+        col = end;
     }
 }
 
@@ -174,7 +193,6 @@ static void compose(m2_tilegen *t, const uint8_t *tile)
     int offA = R4 & 0x8000, offB = R6 & 0x8000;       /* primary map off */
     int wideA = hmaskA & 0x200, wideB = hmaskB & 0x200;
 
-    t->flags = 0;
     /* 1024x1024 is not handled: the original draws nothing at all */
     if ((wideB && (lmaskB & 0x200)) || (wideA && (lmaskA & 0x200))) {
         memset(t->layer, 0, sizeof t->layer);
@@ -182,7 +200,7 @@ static void compose(m2_tilegen *t, const uint8_t *tile)
     }
 
     for (uint32_t L = 0; L < M2_SCREEN_H; L++) {
-        uint32_t *outA = t->layer[0] + L * M2_SCREEN_W, *outB = t->layer[1] + L * M2_SCREEN_W;
+        uint16_t *outA = t->layer[0] + L * M2_SCREEN_W, *outB = t->layer[1] + L * M2_SCREEN_W;
 
         if (R0 & 0x8000) hA = -(uint32_t)ld16(tile + 0x8000 + 2 * L) & hmaskA;
         if (R2 & 0x8000) hB = -(uint32_t)ld16(tile + 0x8800 + 2 * L) & hmaskB;
@@ -191,31 +209,31 @@ static void compose(m2_tilegen *t, const uint8_t *tile)
 
         /* layer B: maps 2 (primary) and 3 */
         if (!offB && wideB)
-            line_wide(t, outB, t->map[2] + lB * 512, t->map[3] + lB * 512, hB, 4, 8);
+            line_wide(outB, t->map[2] + lB * 512, t->map[3] + lB * 512, hB);
         else if (oneB) {
             if (!offB)
-                line_copy(t, outB, map_row(t, 2, 3, lB), hB, 4, 8);
+                line_copy(outB, map_row(t, 2, 3, lB), hB);
             else
-                memset(outB, 0, M2_SCREEN_W * 4);
+                memset(outB, 0, M2_SCREEN_W * 2);
         } else if (offB)
-            line_copy(t, outB, t->map[3] + lB2 * 512, hB2, 4, 8);
+            line_copy(outB, t->map[3] + lB2 * 512, hB2);
         else
-            line_window(t, outB, map_row(t, 2, 3, lB), hB, t->map[3] + lB2 * 512, hB2,
-                        tile + 0xc000 + (L + 0x200) * 8, 4, 8);
+            line_window(outB, map_row(t, 2, 3, lB), hB, t->map[3] + lB2 * 512, hB2,
+                        tile + 0xc000 + (L + 0x200) * 8);
 
         /* layer A: maps 0 (primary) and 1 */
         if (!offA && wideA)
-            line_wide(t, outA, t->map[0] + lA * 512, t->map[1] + lA * 512, hA, 1, 2);
+            line_wide(outA, t->map[0] + lA * 512, t->map[1] + lA * 512, hA);
         else if (oneA) {
             if (!offA)
-                line_copy(t, outA, map_row(t, 0, 1, lA), hA, 1, 2);
+                line_copy(outA, map_row(t, 0, 1, lA), hA);
             else
-                memset(outA, 0, M2_SCREEN_W * 4);
+                memset(outA, 0, M2_SCREEN_W * 2);
         } else if (offA)
-            line_copy(t, outA, t->map[1] + lA2 * 512, hA2, 1, 2);
+            line_copy(outA, t->map[1] + lA2 * 512, hA2);
         else
-            line_window(t, outA, map_row(t, 0, 1, lA), hA, t->map[1] + lA2 * 512, hA2,
-                        tile + 0xc000 + L * 8, 1, 2);
+            line_window(outA, map_row(t, 0, 1, lA), hA, t->map[1] + lA2 * 512, hA2,
+                        tile + 0xc000 + L * 8);
 
         lB = (lB + 1) & lmaskB;
         lA = (lA + 1) & lmaskA;
@@ -229,10 +247,18 @@ void m2tile_render(m2_tilegen *t, const m2_board *b)
     if (t->colours_dirty) {
         build_colours(t, b->xlat);
         t->colours_dirty = 0;
+        t->pal_dirty = 1;
     }
-    /* orig 0x4cbae0: tile palette through the colour table */
-    for (int i = 0; i < 0x1000; i++)
-        t->pal[i] = t->col32[ld16(b->pal + i * 2) & 0x7fff];
-    decode_maps(t, b->tile, b->cg);
-    compose(t, b->tile);
+    if (t->pal_dirty) {   /* orig 0x4cbae0 does this every frame */
+        for (int i = 0; i < 0x1000; i++)
+            t->pal[i] = t->col32[ld16(b->pal + i * 2) & 0x7fff];
+        t->pal_dirty = 0;
+        t->pal_version++;
+    }
+    int decoded = decode_maps(t, b->tile, b->cg);
+    if (decoded || t->ram_dirty) {
+        compose(t, b->tile);
+        t->ram_dirty = 0;
+        t->layer_version++;
+    }
 }

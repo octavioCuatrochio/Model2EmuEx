@@ -17,7 +17,10 @@
 struct m2_gl {
     GLuint tile_prog, poly_prog, post_prog;
     GLint  u_post_tex, u_post_sat, u_post_x, u_meshblend;
-    GLint  u_tile_tex, u_tile_thr, u_tile_x;
+    GLint  u_tile_tex, u_tile_pal, u_tile_hipass, u_tile_x;
+    GLuint tile_pal;
+    uint32_t layer_version, pal_version;
+    int    tiles_valid;
     GLint  u_atlas, u_luma, u_colour, u_scale;
     int    fb_w, fb_h, fb_smooth;
     GLuint tex_tiles[2], atlas, luma, colour, fb_tex, fbo;
@@ -39,18 +42,24 @@ static const char *tile_vs =
     "varying vec2 v_uv;\n"
     "void main() { v_uv = uv; gl_Position = vec4(pos.x * xform.x + xform.y, pos.y, 0.0, 1.0); }\n";
 
-/* Tile pixels carry their priority in alpha (m2tile.h): the original's alpha
-   test <= 0x90 below the 3D (every visible pixel), <= 0x20 above it (high
-   priority only). thr < 0 draws everything (final blit). */
+/* Tile layers hold palette indices (m2tile.h), uploaded as luminance (low
+   byte) + alpha (high byte); the palette is a 256x16 texture. As the
+   original's alpha test: below the 3D every visible pixel (pen != 0), above
+   it only high-priority ones. Everything stays in exact small integers, fine
+   for mediump. */
 static const char *tile_fs =
     "precision mediump float;\n"
     "uniform sampler2D tex;\n"
-    "uniform float thr;\n"
+    "uniform sampler2D pal;\n"
+    "uniform float hipass;\n"
     "varying vec2 v_uv;\n"
     "void main() {\n"
     "    vec4 c = texture2D(tex, v_uv);\n"
-    "    if (c.a < thr) discard;\n"
-    "    gl_FragColor = vec4(c.rgb, 1.0);\n"
+    "    float lo = floor(c.r * 255.0 + 0.5);\n"
+    "    float hi = floor(c.a * 255.0 + 0.5);\n"
+    "    if (mod(lo, 16.0) < 0.5) discard;\n"
+    "    if (hipass > 0.5 && hi < 15.5) discard;\n"
+    "    gl_FragColor = vec4(texture2D(pal, vec2((lo + 0.5) / 256.0, (mod(hi, 16.0) + 0.5) / 16.0)).rgb, 1.0);\n"
     "}\n";
 
 /* final pass to the window: optional saturation boost (not in the original) */
@@ -172,7 +181,8 @@ m2_gl *m2gl_create(void)
         return NULL;
     }
     g->u_tile_tex = glGetUniformLocation(g->tile_prog, "tex");
-    g->u_tile_thr = glGetUniformLocation(g->tile_prog, "thr");
+    g->u_tile_pal = glGetUniformLocation(g->tile_prog, "pal");
+    g->u_tile_hipass = glGetUniformLocation(g->tile_prog, "hipass");
     g->u_tile_x = glGetUniformLocation(g->tile_prog, "xform");
     g->u_scale = glGetUniformLocation(g->poly_prog, "scale");
     g->u_meshblend = glGetUniformLocation(g->poly_prog, "meshblend");
@@ -184,7 +194,8 @@ m2_gl *m2gl_create(void)
     g->u_colour = glGetUniformLocation(g->poly_prog, "colt");
 
     for (int i = 0; i < 2; i++)
-        g->tex_tiles[i] = texture(M2_SCREEN_W, M2_SCREEN_H, GL_RGBA, GL_NEAREST);
+        g->tex_tiles[i] = texture(M2_SCREEN_W, M2_SCREEN_H, GL_LUMINANCE_ALPHA, GL_NEAREST);
+    g->tile_pal = texture(256, 16, GL_RGBA, GL_NEAREST);
     g->atlas = texture(ATLAS, ATLAS, GL_LUMINANCE, GL_NEAREST);
     g->luma = texture(128, 256, GL_LUMINANCE, GL_NEAREST);
     g->colour = texture(64, 1024, GL_RGBA, GL_NEAREST);
@@ -209,8 +220,8 @@ void m2gl_destroy(m2_gl *g)
 {
     if (!g)
         return;
-    GLuint tex[] = { g->tex_tiles[0], g->tex_tiles[1], g->atlas, g->luma, g->colour, g->fb_tex };
-    glDeleteTextures(6, tex);
+    GLuint tex[] = { g->tex_tiles[0], g->tex_tiles[1], g->atlas, g->luma, g->colour, g->fb_tex, g->tile_pal };
+    glDeleteTextures(7, tex);
     glDeleteFramebuffers(1, &g->fbo);
     glDeleteBuffers(1, &g->vbo_quad);
     glDeleteBuffers(1, &g->vbo_poly);
@@ -345,12 +356,15 @@ static void frame_buffer(m2_gl *g, int w, int h, int smooth)
 
 /* The tile layers are 496 wide: centred in a wider frame (4:3 in the middle),
    or stretched over all of it when the game's rule says so */
-static void draw_layers(m2_gl *g, float thr, int frame_w, int stretch_a, int stretch_b)
+static void draw_layers(m2_gl *g, int hipass, int frame_w, int stretch_a, int stretch_b)
 {
     glUseProgram(g->tile_prog);
     glUniform1i(g->u_tile_tex, 0);
-    glUniform1f(g->u_tile_thr, thr);
+    glUniform1i(g->u_tile_pal, 1);
+    glUniform1f(g->u_tile_hipass, hipass ? 1.0f : 0.0f);
     quad_attribs(g, 0);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, g->tile_pal);
     glActiveTexture(GL_TEXTURE0);
     for (int i = 1; i >= 0; i--) {   /* layer B, then A */
         int stretch = i ? stretch_b : stretch_a;
@@ -452,12 +466,22 @@ void m2gl_draw(m2_gl *g, const m2_board *b, const m2_tilegen *t, const m2_geo *g
 
     if (geo)
         upload_tables(g, b, t);
+    /* tile layers and palette: uploaded only when they changed */
     glActiveTexture(GL_TEXTURE0);
-    for (int i = 0; i < 2; i++) {
-        glBindTexture(GL_TEXTURE_2D, g->tex_tiles[i]);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, M2_SCREEN_W, M2_SCREEN_H, GL_RGBA,
-                        GL_UNSIGNED_BYTE, t->layer[i]);
+    if (!g->tiles_valid || t->layer_version != g->layer_version) {
+        for (int i = 0; i < 2; i++) {
+            glBindTexture(GL_TEXTURE_2D, g->tex_tiles[i]);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, M2_SCREEN_W, M2_SCREEN_H, GL_LUMINANCE_ALPHA,
+                            GL_UNSIGNED_BYTE, t->layer[i]);
+        }
+        g->layer_version = t->layer_version;
     }
+    if (!g->tiles_valid || t->pal_version != g->pal_version) {
+        glBindTexture(GL_TEXTURE_2D, g->tile_pal);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, 16, GL_RGBA, GL_UNSIGNED_BYTE, t->pal);
+        g->pal_version = t->pal_version;
+    }
+    g->tiles_valid = 1;
 
     /* the frame, at frame_w x 384 native pixels times the render scale */
     frame_buffer(g, frame_w * scale, M2_SCREEN_H * scale, view->smooth);
@@ -465,10 +489,10 @@ void m2gl_draw(m2_gl *g, const m2_board *b, const m2_tilegen *t, const m2_geo *g
     glViewport(0, 0, g->fb_w, g->fb_h);
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
-    draw_layers(g, 0.25f, frame_w, view->stretch & M2_STRETCH_A_LOW, view->stretch & M2_STRETCH_B_LOW);
+    draw_layers(g, 0, frame_w, view->stretch & M2_STRETCH_A_LOW, view->stretch & M2_STRETCH_B_LOW);
     if (geo)
         draw_polys(g, geo, frame_w, scale, view->mesh_blend);
-    draw_layers(g, 0.75f, frame_w, view->stretch & M2_STRETCH_A_HIGH, view->stretch & M2_STRETCH_B_HIGH);
+    draw_layers(g, 1, frame_w, view->stretch & M2_STRETCH_A_HIGH, view->stretch & M2_STRETCH_B_HIGH);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     /* scale to the window: 496 native pixels are 4:3, a wider frame is
