@@ -31,6 +31,15 @@ static inline uint16_t g16(const tgp *t, uint32_t off)
 
 static inline void s16(tgp *t, uint32_t off, uint16_t v) { memcpy(t->blk + off, &v, 2); }
 
+/* bookkeeping for the embedder (not part of the original): 4 KB pages of
+   ext_ram written, for copies that follow it */
+static inline void ext_dirty(tgp *t, uint32_t byte_off, uint32_t n)
+{
+    if (t->ext_ram_dirty)
+        for (uint32_t p = byte_off >> 12; p <= (byte_off + n - 1) >> 12; p++)
+            t->ext_ram_dirty[p >> 5] |= 1u << (p & 31);
+}
+
 /* Computed accesses: anything leaving the block reads 0 / is dropped. */
 static uint32_t b32(const tgp *t, uint32_t off)
 {
@@ -458,8 +467,10 @@ static void ext_write(tgp *t, uint32_t bank, uint32_t addr, uint32_t v)
     }
     if ((bank & 0xf00000) == 0x400000) {
         uint32_t i = addr & 0xfffff;
-        if (t->ext_ram && i < t->ext_ram_words)
+        if (t->ext_ram && i < t->ext_ram_words) {
             memcpy((uint8_t *)t->ext_ram + i * 4, &v, 4);
+            ext_dirty(t, i * 4, 4);
+        }
     }
 }
 
@@ -969,8 +980,10 @@ uint8_t tgp_m2_port_read8(tgp *t, uint32_t addr)     /* orig 0x4c57f0 */
 
 static void ext_ram_store(tgp *t, uint32_t byte_off, uint32_t v)
 {
-    if (t->ext_ram && (uint64_t)byte_off + 4 <= t->ext_ram_words * 4ull)
+    if (t->ext_ram && (uint64_t)byte_off + 4 <= t->ext_ram_words * 4ull) {
         memcpy((uint8_t *)t->ext_ram + byte_off, &v, 4);
+        ext_dirty(t, byte_off, 4);
+    }
 }
 
 void tgp_m2_ctrl_write32(tgp *t, uint32_t addr, uint32_t v)   /* orig 0x4c5310 */

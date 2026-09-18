@@ -592,6 +592,17 @@ static void w16_io(void *u, uint32_t a, uint16_t v) { io_write16(B(u), a, v); }
 
 /* ------------------------------------------------------------ memory map */
 
+/* buffer RAM 0x900000-0x97ffff: plain memory, written through handlers only
+   to keep bufram_dirty (the original maps it straight) */
+static inline void buf_dirty(m2_board *b, uint32_t o, uint32_t n)
+{
+    for (uint32_t p = o >> 12; p <= ((o + n - 1) & 0x7ffff) >> 12; p++)
+        b->bufram_dirty[p >> 5] |= 1u << (p & 31);
+}
+static void w8_buf(void *u, uint32_t a, uint8_t v)   { m2_board *b = B(u); a &= 0x7ffff; b->bufram[a] = v; buf_dirty(b, a, 1); }
+static void w16_buf(void *u, uint32_t a, uint16_t v) { m2_board *b = B(u); a &= 0x7ffff; if (a <= 0x7fffe) st16(b->bufram + a, v); else b->bufram[a] = (uint8_t)v; buf_dirty(b, a, 2); }
+static void w32_buf(void *u, uint32_t a, uint32_t v) { m2_board *b = B(u); a &= 0x7ffff; if (a <= 0x7fffc) st32(b->bufram + a, v); else memcpy(b->bufram + a, &v, 0x80000 - a); buf_dirty(b, a, 4); }
+
 static void map_r(m2_board *b, uint32_t page, uint32_t n, uint8_t *host,
                   i960_read8_fn r8, i960_read16_fn r16, i960_read32_fn r32)
 {
@@ -642,7 +653,7 @@ static void setup_map(m2_board *b)   /* orig 0x4cd450 */
     map_w(b, 0x88, 1, NULL, w8_nop, w16_copro_fifo, w32_copro_fifo);
     map_w(b, 0x8c, 1, NULL, w8_nop, w16_nop, w32_8c0000);
     map_r(b, 0x90, 8, b->bufram, NULL, NULL, NULL);
-    map_w(b, 0x90, 8, b->bufram, NULL, NULL, NULL);
+    map_w(b, 0x90, 8, NULL, w8_buf, w16_buf, w32_buf);
     map_r(b, 0x98, 1, NULL, r8_980, r16_980, b->type == 0 ? r32_980_m2 : r32_980_m2a);
     map_w(b, 0x98, 1, NULL, w8_nop, w16_nop, w32_980);
 
@@ -804,6 +815,7 @@ void m2_reset(m2_board *b)   /* orig 0x4cd450, after allocation */
     memset(b->coproram, 0, 0x20000);
     memset(b->back, 0, 0x10000);
     memset(b->bufram, 0, 0x80000);
+    memset(b->bufram_dirty, 0xff, sizeof b->bufram_dirty);
     for (int n = 0; n < 4; n++)
         b->timer[n] = 0xfffff;
     b->irq_pending = b->irq_enable = 0;
@@ -823,6 +835,7 @@ void m2_reset(m2_board *b)   /* orig 0x4cd450, after allocation */
     b->tgp.table_rom_size = b->rom.size[10];
     b->tgp.ext_ram = (uint32_t *)b->bufram;
     b->tgp.ext_ram_words = 0x20000;
+    b->tgp.ext_ram_dirty = b->bufram_dirty;
     b->tgp.ext_rom = b->rom.size[2] ? (const uint32_t *)b->rom.ptr[2] : NULL;
     b->tgp.ext_rom_words = b->rom.size[2] / 4;
     b->tgp.data_buf = (uint32_t *)b->tgp_data;

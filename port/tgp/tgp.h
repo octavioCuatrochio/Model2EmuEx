@@ -70,6 +70,7 @@ typedef struct {
     uint32_t  table_rom_size;
     uint32_t *ext_ram;          /* shared copro RAM, bank 4 (original 0x5aa700) */
     uint32_t  ext_ram_words;
+    uint32_t *ext_ram_dirty;    /* optional: bit per 4 KB page of ext_ram written */
     const uint32_t *ext_rom;    /* banks 8-15 (original 0x5aa8dc), may be NULL */
     uint32_t  ext_rom_words;
     uint32_t *data_buf;         /* data upload buffer (original 0x5aa8b0) */

@@ -41,9 +41,21 @@ $(BUILD)/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
+# Android, armeabi-v7a (the Allwinner H3's Cortex-A7): the headless m2run,
+# for timing on the device (adb push; M2_BENCH=1 build-android/m2run ...).
+#   make android NDK=~/Android/Sdk/ndk/<version>
+ANDROID_API ?= 21
+ARM_FLAGS   := -O2 -g -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mthumb
+NDK_BIN      = $(NDK)/toolchains/llvm/prebuilt/linux-x86_64/bin
+android:
+	@test -n "$(NDK)" || { echo "set NDK=<path to the Android NDK>"; exit 1; }
+	CFLAGS="$(ARM_FLAGS)" CXXFLAGS="$(ARM_FLAGS)" LDFLAGS="-static-libstdc++" \
+	$(MAKE) BUILD=build-android CC=$(NDK_BIN)/armv7a-linux-androideabi$(ANDROID_API)-clang \
+		CXX=$(NDK_BIN)/armv7a-linux-androideabi$(ANDROID_API)-clang++ build-android/m2run
+
 clean:
 	rm -rf $(BUILD)
 
 -include $(shell find $(BUILD) -name '*.d' 2>/dev/null)
 
-.PHONY: all clean
+.PHONY: all clean android

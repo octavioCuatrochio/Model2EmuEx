@@ -13,11 +13,15 @@
 #define TEX_SIZE    (0x100000 + 4)
 #define BUF_SIZE    0x80000
 #define BAND_SHIFT  14         /* texture RAM in 16 KB bands (32 atlas rows, m2gl.c) */
+#define TPAGE_SHIFT 10         /* tile RAM in 1 KB pages */
+#define BPAGE_SHIFT 12         /* buffer RAM in 4 KB pages (m2_board.bufram_dirty) */
 #define PAL_SHIFT   9          /* palette in 0x200-byte blocks */
 
 typedef struct {               /* notifications of one frame */
     uint8_t  tile_words[0x8000 / 2 / 8];   /* maps area, bit per 16-bit word */
     int      tile_ram;         /* any tile RAM write */
+    uint64_t tile_pages;       /* which 1 KB pages */
+    uint32_t buf_pages[4];     /* buffer RAM 4 KB pages (from the board) */
     int      cg, cg_mirror, xlat, luma;
     uint32_t pal_blocks;
     uint64_t tex[2];
@@ -26,8 +30,8 @@ typedef struct {               /* notifications of one frame */
 typedef struct {
     events   ev;
     int      all;              /* everything copied and reported */
-    uint8_t *tile, *pal, *xlat, *luma, *cg, *bufram;   /* traded with the mirrors */
-    uint8_t *tex[2];           /* only the written bands are valid */
+    uint8_t *pal, *xlat, *luma, *cg;   /* traded with the mirrors */
+    uint8_t *tile, *bufram, *tex[2];   /* only the written pages are valid */
     int16_t  hsync, vsync;
     uint32_t reg_803008;
     m2_pipe_frame info;
@@ -50,7 +54,10 @@ struct m2_pipe {
 static void rec_tile(void *u, uint32_t o)
 {
     m2_pipe *p = u;
+    uint32_t a = o & 0xffff;
     p->ev.tile_ram = 1;
+    p->ev.tile_pages |= 1ull << (a >> TPAGE_SHIFT);
+    p->ev.tile_pages |= 1ull << (((a + 3) & 0xffff) >> TPAGE_SHIFT);   /* 32-bit store over a page end */
     if (o < 0x8000) {   /* direct write to the maps (bit 16 = mirror: no decode) */
         uint32_t w = o >> 1;
         p->ev.tile_words[w >> 3] |= (uint8_t)(1u << (w & 7));
@@ -165,7 +172,17 @@ void m2pipe_invalidate(m2_pipe *p) { p->invalid = 1; }
 
 /* ------------------------------------------------------------ capture */
 
-void m2pipe_capture(m2_pipe *p, const m2_board *b)
+/* copies the pages whose bit is set in `mask` */
+static void copy_pages(uint8_t *dst, const uint8_t *src, const uint32_t *mask, int words, int shift)
+{
+    for (int w = 0; w < words; w++)
+        for (uint32_t m = mask[w]; m; m &= m - 1) {
+            size_t off = (size_t)(w * 32 + __builtin_ctz(m)) << shift;
+            memcpy(dst + off, src + off, (size_t)1 << shift);
+        }
+}
+
+void m2pipe_capture(m2_pipe *p, m2_board *b)
 {
     slot *s = &p->s[p->wr];
     p->wr ^= 1;
@@ -175,12 +192,20 @@ void m2pipe_capture(m2_pipe *p, const m2_board *b)
     p->invalid = 0;
     const events *e = &s->ev;
 
-    if (s->all || e->tile_ram) memcpy(s->tile, b->tile, TILE_SIZE);
+    memcpy(s->ev.buf_pages, b->bufram_dirty, sizeof s->ev.buf_pages);
+    memset(b->bufram_dirty, 0, sizeof b->bufram_dirty);
+    if (s->all) {
+        memcpy(s->tile, b->tile, TILE_SIZE);
+        memcpy(s->bufram, b->bufram, BUF_SIZE);
+    } else {
+        const uint32_t tp[2] = { (uint32_t)e->tile_pages, (uint32_t)(e->tile_pages >> 32) };
+        copy_pages(s->tile, b->tile, tp, 2, TPAGE_SHIFT);
+        copy_pages(s->bufram, b->bufram, e->buf_pages, 4, BPAGE_SHIFT);
+    }
     if (s->all || e->pal_blocks) memcpy(s->pal, b->pal, PAL_SIZE);
     if (s->all || e->xlat) memcpy(s->xlat, b->xlat, XLAT_SIZE);
     if (s->all || e->luma) memcpy(s->luma, b->luma, LUMA_SIZE);
     if (s->all || e->cg || e->cg_mirror) memcpy(s->cg, b->cg, CG_SIZE);
-    memcpy(s->bufram, b->bufram, BUF_SIZE);
     const uint8_t *tex[2] = { b->tex0, b->tex1 };
     for (int k = 0; k < 2; k++) {
         if (s->all) {
@@ -211,12 +236,18 @@ const m2_board *m2pipe_apply(m2_pipe *p, const m2_hooks *r, m2_pipe_frame *info)
     m2_board *sh = &p->shadow;
     int all = s->all;
 
-    if (all || e->tile_ram) trade(&sh->tile, &s->tile);
+    if (all) {
+        memcpy(sh->tile, s->tile, TILE_SIZE);
+        memcpy(sh->bufram, s->bufram, BUF_SIZE);
+    } else {
+        const uint32_t tp[2] = { (uint32_t)e->tile_pages, (uint32_t)(e->tile_pages >> 32) };
+        copy_pages(sh->tile, s->tile, tp, 2, TPAGE_SHIFT);
+        copy_pages(sh->bufram, s->bufram, e->buf_pages, 4, BPAGE_SHIFT);
+    }
     if (all || e->pal_blocks) trade(&sh->pal, &s->pal);
     if (all || e->xlat) trade(&sh->xlat, &s->xlat);
     if (all || e->luma) trade(&sh->luma, &s->luma);
     if (all || e->cg || e->cg_mirror) trade(&sh->cg, &s->cg);
-    trade(&sh->bufram, &s->bufram);
     uint8_t *tex[2] = { sh->tex0, sh->tex1 };
     for (int k = 0; k < 2; k++) {
         if (all) {

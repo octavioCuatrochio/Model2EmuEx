@@ -6,10 +6,11 @@
  * On the emulation thread, m2pipe_attach puts recording hooks on the board
  * (the video notifications; the others are forwarded untouched) and
  * m2pipe_capture copies what the renderer reads at the end of each frame:
- * tile RAM and the display list every frame, the other video memories only
- * when written. On the render thread, m2pipe_apply brings its own copies up
- * to date, replays the frame's notifications into the renderer's hooks, and
- * returns a board whose video memories are those copies.
+ * the pages of tile RAM and buffer RAM (display list) written during the
+ * frame, and the other video memories whole when written. On the render
+ * thread, m2pipe_apply brings its own copies up to date, replays the frame's
+ * notifications into the renderer's hooks, and returns a board whose video
+ * memories are those copies.
  *
  * Two slots: capture fills one while apply reads the other. The caller does
  * the synchronisation: capture of frame N + 1 may run during apply and
@@ -38,7 +39,7 @@ void     m2pipe_destroy(m2_pipe *p);
 /* Emulation side. attach: the board's current hooks become the next in line
    (call again after changing b->hooks). capture: after m2_run_frame. */
 void     m2pipe_attach(m2_pipe *p, m2_board *b);
-void     m2pipe_capture(m2_pipe *p, const m2_board *b);
+void     m2pipe_capture(m2_pipe *p, m2_board *b);   /* clears b->bufram_dirty */
 /* The next capture copies everything and reports everything written (after
    a reset or anything else that changes memories without notifications). */
 void     m2pipe_invalidate(m2_pipe *p);

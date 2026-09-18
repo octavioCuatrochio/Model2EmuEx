@@ -101,6 +101,9 @@ typedef struct m2_board {
     uint32_t snd_status_count;
 
     uint64_t frame;
+    /* bit per 4 KB page of bufram written (i960 and TGP) since the last
+       clear; for copies that follow bufram (m2pipe clears it) */
+    uint32_t bufram_dirty[4];
     uint32_t busy_slices;
 } m2_board;
 

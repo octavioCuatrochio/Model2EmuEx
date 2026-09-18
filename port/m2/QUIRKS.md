@@ -74,6 +74,7 @@ hardware from the 2B manual and from ElSemi's own Direct3D implementation.
 | 12 | resolution | Direct3D at the window's resolution. | The frame renders at an integer scale of the native 496x384 (`--scale`, auto = window height / 384), then scales to the window. The mesh (checker) effect stays at native pixel size. Tile layers are upscaled, not re-rendered. |
 | 15 | frame hand-over (`m2pipe.c`, `m2emu --pipeline`) | Emulates and draws each frame in turn on one thread. | By default the board runs on its own thread one frame ahead: at the end of each frame the video memories the renderer reads are copied (tile RAM and the display list every frame, the others when written) and drawn while the next frame runs. Same pictures, one frame (about 17 ms) more input latency; `--pipeline off` draws each frame right after emulating it, on one thread. |
 | 16 | CG RAM mirror 0x1180000 | Mapped straight onto CG RAM: writes there don't re-decode the tiles. | Same effect, but written through handlers that report `cg_mirror_written`, so a copy of CG RAM (the frame hand-over) can follow. Nothing is re-decoded, as in the original. |
+| 17 | buffer RAM 0x900000–0x97ffff (display list) | Mapped straight onto memory. A 32-bit store at its last 3 bytes writes past the end. | Written through handlers that keep a bitmap of the 4 KB pages written (as does the TGP), so the frame hand-over copies only those (1.5–5 of 128 pages a frame). Stores at the end are clipped to the buffer. |
 
 ## 5. Inputs
 
