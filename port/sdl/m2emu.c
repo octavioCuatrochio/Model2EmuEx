@@ -11,7 +11,7 @@
  * two cabinets, in one window side by side (--aspect stretch or crop fill
  * each half); --split stack puts them one above the other with wide views that
  * fill each half. Keyboard and pad 1 drive player 1 (left/top), pad 2
- * player 2.
+ * player 2. Only player 1's machine is heard.
  *
  * Keys (from the original's input definitions): 5/6 coin, 1/2 start,
  * F1 service, F2 test, arrows, Z X C V / A S D F G game buttons.
@@ -82,32 +82,12 @@ static void on_pal(void *u, uint32_t o)
 }
 static void on_sound(void *u, uint8_t c) { player *p = u; if (p->snd) m2snd_command(p->snd, c); }
 
-/* The sound boards run here, on SDL's audio thread, at the device's pace:
-   their tempo stays right even when the emulation can't keep full speed.
-   Two boards (--coop) are mixed. */
+/* The sound board runs here, on SDL's audio thread, at the device's pace:
+   its tempo stays right even when the emulation can't keep full speed.
+   With --coop only player 1's machine has one. */
 static void audio_callback(void *u, Uint8 *stream, int len)
 {
-    (void)u;
-    int16_t *out = (int16_t *)stream;
-    int n = len / 4;
-    if (nplayers == 1) {
-        m2snd_render(pl[0].snd, out, n);
-        return;
-    }
-    static int16_t a[1024 * 2], b[1024 * 2];
-    while (n > 0) {
-        int k = n < 1024 ? n : 1024;
-        memset(a, 0, sizeof(int16_t) * (size_t)k * 2);
-        memset(b, 0, sizeof(int16_t) * (size_t)k * 2);
-        if (pl[0].snd) m2snd_render(pl[0].snd, a, k);
-        if (pl[1].snd) m2snd_render(pl[1].snd, b, k);
-        for (int i = 0; i < k * 2; i++) {
-            int v = (a[i] + b[i]) * 3 / 4;   /* two cabinets' worth of sound */
-            out[i] = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
-        }
-        out += k * 2;
-        n -= k;
-    }
+    m2snd_render(u, (int16_t *)stream, len / 4);
 }
 
 /* The board runs on its own thread, one frame ahead of the renderer: while
@@ -321,9 +301,11 @@ int main(int argc, char **argv)
         p->b->hooks.luma_written = on_luma;
         p->b->hooks.palette_written = on_pal;
         p->b->hooks.sound_command = on_sound;
-        p->snd = m2snd_create(p->b);
-        if (!p->snd)
-            fprintf(stderr, "no sound board (missing sound ROMs?)\n");
+        if (i == 0) {   /* --coop: player 2's machine plays silently */
+            p->snd = m2snd_create(p->b);
+            if (!p->snd)
+                fprintf(stderr, "no sound board (missing sound ROMs?)\n");
+        }
         p->replay = p->b->hooks;   /* the video hooks now run on the main thread */
         m2pipe_attach(p->pipe, p->b);
         p->in.updown_gears = updown_gears;   /* the original's UpDownGears / HoldGears */
@@ -366,7 +348,7 @@ int main(int argc, char **argv)
         if (!(pl[i].gl = m2gl_create())) return 1;
 
     SDL_AudioDeviceID audio = 0;
-    if (pl[0].snd || (coop && pl[1].snd)) {
+    if (pl[0].snd) {
         SDL_AudioSpec want, have;
         SDL_zero(want);
         want.freq = M2SND_RATE;
@@ -374,6 +356,7 @@ int main(int argc, char **argv)
         want.channels = 2;
         want.samples = 1024;
         want.callback = audio_callback;
+        want.userdata = pl[0].snd;
         audio = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
         if (!audio)
             fprintf(stderr, "audio: %s\n", SDL_GetError());

@@ -154,8 +154,8 @@ Two complete Daytona boards run in one window, linked through their network
 boards like two cabinets on the arcade's link: each player drives their own
 car and sees the other one on the track. Player 1 (left or top, red car 1)
 uses the keyboard and pad 1; player 2 (right or bottom, blue car 2) uses
-pad 2. Each side takes its own coin and start. Sound from both machines is
-mixed.
+pad 2. Each side takes its own coin and start. You hear player 1's machine
+only (player 2's runs silently).
 
 Layouts, on a 16:9 screen:
 
@@ -205,7 +205,7 @@ over. With no file, Daytona starts with its link setting on "single"
 
 With `--coop` each board has its own board thread; the two wait for each
 other between frames, when the network link passes data from one board to
-the other. The audio thread plays both sound boards and mixes them.
+the other. The audio thread plays player 1's sound board only.
 
 - `--pipeline on` (default): frame N is drawn while frame N + 1 runs, so a
   frame costs the slower of the two instead of their sum, for one frame
