@@ -133,7 +133,8 @@ Configuration tab has the same settings.
 | `--widescreen 16:9\|16:10\|fill\|off` | off | wider picture with extra field of view (see below); `fill` = the window's own ratio (4:3 up to 4:1); F9 toggles |
 | `--aspect keep\|stretch\|crop` | keep | when the window (or a player's half) is narrower than the picture: keep = bands above and below; stretch = squeeze it to fill (distorted); crop = fill it at the right proportions by cutting the picture's sides while the game shows 3D, with the HUD squeezed in whole (other screens are squeezed) |
 | `--scale N\|auto` | auto | render resolution: N times 496x384 (auto = window height / 384); F10 cycles |
-| `--sharp` | smooth | nearest-neighbour instead of linear filtering when scaling to the window |
+| `--sharp` | smooth | nearest-neighbour instead of linear filtering when scaling the finished picture to the window |
+| `--texture-filter nearest\|bilinear\|trilinear` | nearest | filtering of the 3D textures: nearest = square texels, as the hardware and MAME; bilinear = smooth, as the original emulator's Direct3D; trilinear = bilinear, and distant or slanted textures averaged over each pixel so they don't shimmer. F6 cycles. Bilinear and trilinear are for PC graphics cards (on the Mali-400 keep nearest) |
 | `--mesh blend\|checker` | blend | mesh polygons (shadows, fences): 50% see-through, or the hardware's every-other-pixel checkerboard; F8 toggles |
 | `--saturation S` | 1.0 | colour saturation boost in the final pass (1.0 = as the hardware); F7 cycles 1.0 / 1.2 / 1.4 |
 | `--gamma G` or `--gamma R,G,B` | 1.0 | colour gamma, as the original's GammaR/G/B (applies to tiles and 3D); above 1 brightens mid-tones |
@@ -154,6 +155,7 @@ and the game list. Unknown options stop the program with a message.
 | F3 | reset the machine (save data kept) |
 | P | pause |
 | Tab (hold) | fast forward (sound keeps normal speed; some sound commands may be dropped) |
+| F6 | texture filter: nearest / bilinear / trilinear |
 | F7 | saturation 1.0 / 1.2 / 1.4 |
 | F8 | mesh: blend / checker |
 | F9 | widescreen on/off |

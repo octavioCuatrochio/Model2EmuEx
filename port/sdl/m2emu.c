@@ -6,7 +6,8 @@
  *
  * options: [-r romdir] [-n nvdir] [--vsync] [--no-frame-cap] [--fullscreen]
  *          [--size WxH] [--widescreen 16:9|16:10|fill|off] [--scale N|auto]
- *          [--sharp] [--mesh blend|checker] [--saturation S]
+ *          [--sharp] [--texture-filter nearest|bilinear|trilinear]
+ *          [--mesh blend|checker] [--saturation S]
  *          [--gamma G | --gamma R,G,B] [--shifter sequential|hpattern]
  *          [--hold-gears] [--pipeline on|off] [--aspect keep|stretch|crop]
  *          [--coop [--split side|stack]]
@@ -20,9 +21,10 @@
  * Keys (from the original's input definitions): 5/6 coin, 1/2 start,
  * F1 service, F2 test, arrows, Z X C V / A S D F G game buttons.
  * Frontend: Esc back to the launcher (quit with --no-gui), F3 reset,
- * P pause, Tab (hold) fast forward, F7 saturation (1.0, 1.2, 1.4), F8 mesh
- * blend/checker, F9 widescreen on/off, F10 render scale (auto, 1-4), F11
- * fullscreen. Pads (up to 2, hot-plug): see m2/m2input.c for the layout.
+ * P pause, Tab (hold) fast forward, F6 texture filter (nearest, bilinear,
+ * trilinear), F7 saturation (1.0, 1.2, 1.4), F8 mesh blend/checker, F9
+ * widescreen on/off, F10 render scale (auto, 1-4), F11 fullscreen.
+ * Pads (up to 2, hot-plug): see m2/m2input.c for the layout.
  */
 #include "../m2/m2board.h"
 #include "../m2/m2geo.h"
@@ -219,6 +221,7 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
     char nvdir[1024];
     m2opt_nvdir(o, nvdir, sizeof nvdir);
     int vsync = o->vsync, fullscreen = o->fullscreen, smooth = o->smooth, frame_cap = o->frame_cap;
+    int tex_filter = o->tex_filter;
     int wide_on = o->wide == M2_WIDE_RATIO || o->wide == M2_WIDE_FILL;
     int wide_fill = o->wide == M2_WIDE_FILL, wide_set = o->wide != M2_WIDE_DEFAULT;
     double wide_ratio = o->wide == M2_WIDE_RATIO ? o->wide_ratio : 16.0 / 9.0;
@@ -396,6 +399,7 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
                         if (audio) SDL_PauseAudioDevice(audio, paused);
                     }
                     else if (sc == SDL_SCANCODE_F3) want_reset = 1;
+                    else if (sc == SDL_SCANCODE_F6) tex_filter = (tex_filter + 1) % 3;
                     else if (sc == SDL_SCANCODE_F7) saturation = saturation < 1.1f ? 1.2f : saturation < 1.3f ? 1.4f : 1.0f;
                     else if (sc == SDL_SCANCODE_F8) mesh_blend = !mesh_blend;
                     else if (sc == SDL_SCANCODE_F9) wide_on = !wide_on;
@@ -575,6 +579,7 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
             view.stretch = crop ? M2_STRETCH_A_LOW | M2_STRETCH_A_HIGH | M2_STRETCH_B_HIGH
                                 : wide_on ? p->pf.wide.stretch : 0;
             view.smooth = smooth;
+            view.tex_filter = tex_filter;
             view.fill = squeeze;
             view.mesh_blend = mesh_blend;
             view.saturation = saturation;
@@ -707,11 +712,13 @@ static void usage(void)
                     "       m2emu --no-gui [options] <game>\n"
                     "options: [-r romdir] [-n nvdir] [--vsync] [--no-frame-cap] [--fullscreen] [--size WxH]\n"
                     "         [--widescreen 16:9|16:10|fill|off] [--scale N|auto] [--sharp]\n"
+                    "         [--texture-filter nearest|bilinear|trilinear]\n"
                     "         [--mesh blend|checker] [--saturation S] [--gamma G | --gamma R,G,B]\n"
                     "         [--shifter sequential|hpattern] [--hold-gears] [--pipeline on|off]\n"
                     "         [--aspect keep|stretch|crop] [--coop [--split side|stack]]\n"
                     "keys: Esc quit (with the launcher: back to it), F3 reset, P pause, Tab fast forward,\n"
-                    "      F7 saturation, F8 mesh, F9 widescreen, F10 scale, F11 fullscreen.\n"
+                    "      F6 texture filter, F7 saturation, F8 mesh, F9 widescreen, F10 scale,\n"
+                    "      F11 fullscreen.\n"
                     "Full guide: port/README.md\n"
                     "games:");
     for (int i = 0; i < n; i++)

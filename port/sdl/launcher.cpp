@@ -419,11 +419,23 @@ static void config_tab(m2_options *o, bool *changed)
             "window. Higher looks sharper and costs more graphics power. F10 cycles while playing.");
 
     {
+        static const char *const tfilters[] = { "Nearest (as the hardware)", "Bilinear", "Trilinear" };
+        int f = o->tex_filter >= 0 && o->tex_filter <= 2 ? o->tex_filter : 0;
+        if (combo("Texture filter", &f, tfilters, 3)) { o->tex_filter = f; c = true; }
+    }
+    explain("How the 3D textures (track, cars, scenery) are sampled. Nearest shows their square texels, as the "
+            "Model 2 hardware and MAME. Bilinear smooths them, as the original emulator did. Trilinear also "
+            "averages distant and slanted surfaces over each pixel, so roads and fences in the distance don't "
+            "shimmer. Bilinear and trilinear take more graphics power (fine on a PC graphics card; keep Nearest "
+            "on small devices). F6 cycles while playing.");
+
+    {
         static const char *const filters[] = { "Smooth", "Sharp" };
         int f = o->smooth ? 0 : 1;
         if (combo("Scaling filter", &f, filters, 2)) { o->smooth = f == 0; c = true; }
     }
-    explain("How the picture is enlarged to the window: Smooth blends neighbouring pixels, Sharp keeps them square.");
+    explain("How the finished picture is enlarged to the window: Smooth blends neighbouring pixels, Sharp keeps "
+            "them square.");
 
     {
         static const char *const wides[] = { "Default", "Off (4:3)", "16:9", "16:10", "Fill the window" };

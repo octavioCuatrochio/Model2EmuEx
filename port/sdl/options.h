@@ -22,6 +22,7 @@ typedef struct {
     int    pipelined;
     int    scale;            /* render scale, 0 = auto */
     int    smooth;           /* linear filtering when scaling */
+    int    tex_filter;       /* 3D textures: 0 nearest, 1 bilinear, 2 trilinear (M2_TEX_*) */
     int    wide;             /* M2_WIDE_*; DEFAULT = off, but fill with --coop --split stack */
     double wide_ratio;       /* with M2_WIDE_RATIO */
     int    aspect;           /* M2_ASPECT_* */

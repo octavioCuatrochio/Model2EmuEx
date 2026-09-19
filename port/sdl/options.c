@@ -43,6 +43,18 @@ static int set_wide(m2_options *o, const char *v)
     return 0;
 }
 
+static const char *const tex_filters[] = { "nearest", "bilinear", "trilinear" };
+
+static int set_tex_filter(m2_options *o, const char *v)
+{
+    for (int i = 0; i < 3; i++)
+        if (!strcmp(v, tex_filters[i])) {
+            o->tex_filter = i;
+            return 0;
+        }
+    return -1;
+}
+
 static int set_aspect(m2_options *o, const char *v)
 {
     if (!strcmp(v, "keep")) o->aspect = M2_ASPECT_KEEP;
@@ -73,6 +85,10 @@ int m2opt_parse(m2_options *o, int argc, char **argv, const char **game, int *no
         else if (!strcmp(a, "--no-frame-cap")) o->frame_cap = 0;
         else if (!strcmp(a, "--fullscreen")) o->fullscreen = 1;
         else if (!strcmp(a, "--sharp")) o->smooth = 0;
+        else if (!strcmp(a, "--texture-filter") && v) {
+            if (set_tex_filter(o, v)) { fprintf(stderr, "--texture-filter: nearest, bilinear or trilinear\n"); return 1; }
+            i++;
+        }
         else if (!strcmp(a, "--shifter") && v) { o->updown_gears = !strcmp(v, "sequential"); i++; }
         else if (!strcmp(a, "--hold-gears")) o->hold_gears = 1;
         else if (!strcmp(a, "--pipeline") && v) { o->pipelined = strcmp(v, "off") != 0; i++; }
@@ -176,6 +192,7 @@ int m2opt_load(m2_options *o, const char *path, char *last_game, int last_game_s
         else if (!strcmp(k, "pipeline")) o->pipelined = atoi(v) != 0;
         else if (!strcmp(k, "render_scale")) o->scale = atoi(v);
         else if (!strcmp(k, "smooth")) o->smooth = atoi(v) != 0;
+        else if (!strcmp(k, "texture_filter")) set_tex_filter(o, v);
         else if (!strcmp(k, "widescreen")) set_wide(o, v);
         else if (!strcmp(k, "aspect")) set_aspect(o, v);
         else if (!strcmp(k, "mesh")) o->mesh_blend = strcmp(v, "checker") != 0;
@@ -230,6 +247,7 @@ int m2opt_save(const m2_options *o, const char *path, const char *last_game)
     fprintf(f, "pipeline = %d\n", o->pipelined);
     fprintf(f, "render_scale = %d\n", o->scale);
     fprintf(f, "smooth = %d\n", o->smooth);
+    fprintf(f, "texture_filter = %s\n", tex_filters[o->tex_filter >= 0 && o->tex_filter <= 2 ? o->tex_filter : 0]);
     fprintf(f, "widescreen = %s\n", wide);
     fprintf(f, "aspect = %s\n", aspects[o->aspect >= 0 && o->aspect <= 2 ? o->aspect : 0]);
     fprintf(f, "mesh = %s\n", o->mesh_blend ? "blend" : "checker");

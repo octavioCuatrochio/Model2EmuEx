@@ -16,13 +16,16 @@
 #define ATLAS 2048
 
 struct m2_gl {
-    GLuint tile_prog, poly_prog, post_prog;
-    GLint  u_post_tex, u_post_sat, u_post_x, u_meshblend;
+    GLuint tile_prog, post_prog;
+    GLint  u_post_tex, u_post_sat, u_post_x;
+    struct {                   /* polygon programs, by texture filter (M2_TEX_*) */
+        GLuint prog;
+        GLint  u_atlas, u_luma, u_colour, u_scale, u_meshblend;
+    } poly[3];
     GLint  u_tile_tex, u_tile_pal, u_tile_hipass, u_tile_x;
     GLuint tile_pal;
     uint32_t layer_version, pal_version;
     int    tiles_valid;
-    GLint  u_atlas, u_luma, u_colour, u_scale;
     int    fb_w, fb_h, fb_smooth;
     GLuint tex_tiles[2], atlas, luma, colour, fb_tex, fbo;
     GLuint vbo_quad, vbo_poly, ibo_poly;
@@ -41,6 +44,8 @@ typedef struct pvtx {
     float    x, y, z, w;      /* clip space, w = view depth (perspective-correct uv) */
     float    u, v;            /* atlas coordinates */
     uint16_t par[4];          /* luma row, colour row, polygon luma, flags (PF_*) */
+    uint16_t rect[4];         /* texture in the atlas, for filtering: x, y (+ 0x8000
+                                 when mirrored on that axis), width, height */
 } pvtx;
 #define PF_TRANSLUCENT 1
 #define PF_MESH        2
@@ -142,19 +147,121 @@ static const char *poly_fs =
     "    gl_FragColor = vec4(texture2D(colt, vec2(col, v_par.y)).rgb, alpha);\n"
     "}\n";
 
+/* Filtered texturing (bilinear, trilinear). The atlas holds 4-bit texel
+   indices, which only become colours through the luma and colour tables, so
+   the GPU can't filter them: the shader turns each neighbouring texel into
+   its colour and blends those. Texels outside the texture wrap (the texture
+   repeats) or clamp (mirrored axes: the next copy starts with the same
+   texel), so neighbours in the atlas never bleed in. Translucent texels (15)
+   count as transparent; the pixel is dropped when under half is opaque.
+   Trilinear does what mipmaps are for (true mipmaps can't be built: the
+   colours depend on each polygon's tables): where a pixel covers more than
+   one texel (distant or slanted surfaces, from the screen-space derivatives)
+   it averages four bilinear samples spread over the pixel's footprint,
+   blended in as the footprint grows, so distant textures stop shimmering.
+   The texture coordinates need highp: fine on desktop GL, and asked for on
+   GLES where the GPU has it (not the Mali-400). */
+static const char *poly_filter_vs =
+    "attribute vec4 pos;\n"
+    "attribute vec2 uv;\n"
+    "attribute vec4 par;\n"
+    "attribute vec4 rect;\n"
+    "varying vec2 v_uv;\n"
+    "varying vec4 v_par;\n"
+    "varying vec2 v_par2;\n"
+    "varying vec4 v_rect;\n"      /* texture origin in the atlas, size (texels) */
+    "varying vec2 v_mirror;\n"
+    "void main() {\n"
+    "    float f = par.w;\n"
+    "    float untex = step(3.5, f); f -= 4.0 * untex;\n"
+    "    float mesh = step(1.5, f); f -= 2.0 * mesh;\n"
+    "    float lz = untex > 0.5 ? (floor(par.z / 4.0) + 0.5) / 64.0 : par.z / 256.0;\n"
+    "    v_uv = uv;\n"
+    "    v_par = vec4((par.x + 0.5) / 256.0, (par.y + 0.5) / 1024.0, lz, f);\n"
+    "    v_par2 = vec2(mesh, untex);\n"
+    "    v_mirror = step(32767.5, rect.xy);\n"
+    "    v_rect = vec4(rect.xy - 32768.0 * v_mirror, rect.zw);\n"
+    "    gl_Position = pos;\n"
+    "}\n";
+
+static const char *poly_filter_fs =
+    "#ifdef GL_FRAGMENT_PRECISION_HIGH\n"
+    "precision highp float;\n"
+    "#endif\n"
+    "uniform sampler2D atlas;\n"
+    "uniform sampler2D lumat;\n"
+    "uniform sampler2D colt;\n"
+    "uniform float scale;\n"
+    "uniform float meshblend;\n"
+    "varying vec2 v_uv;\n"
+    "varying vec4 v_par;\n"
+    "varying vec2 v_par2;\n"
+    "varying vec4 v_rect;\n"
+    "varying vec2 v_mirror;\n"
+    /* one texel (texture-local, whole numbers) as premultiplied colour, coverage */
+    "vec4 texel(vec2 p) {\n"
+    "    vec2 q = mix(mod(p, v_rect.zw), clamp(p, vec2(0.0), v_rect.zw - 1.0), v_mirror);\n"
+    "    float t = floor(texture2D(atlas, (v_rect.xy + q + 0.5) / 2048.0).r * 15.0 + 0.5);\n"
+    "    float keep = (v_par.w > 0.5 && t > 14.5) ? 0.0 : 1.0;\n"
+    "    float l = texture2D(lumat, vec2((t * 8.0 + 0.5) / 128.0, v_par.x)).r * 255.0;\n"
+    "    l = min(floor(l * v_par.z), 63.0);\n"
+    "    return vec4(texture2D(colt, vec2((l + 0.5) / 64.0, v_par.y)).rgb * keep, keep);\n"
+    "}\n"
+    /* bilinear at texture-local position tl (texels) */
+    "vec4 bilinear(vec2 tl) {\n"
+    "    vec2 p = tl - 0.5;\n"
+    "    vec2 i = floor(p);\n"
+    "    vec2 f = p - i;\n"
+    "    return mix(mix(texel(i), texel(i + vec2(1.0, 0.0)), f.x),\n"
+    "               mix(texel(i + vec2(0.0, 1.0)), texel(i + 1.0), f.x), f.y);\n"
+    "}\n"
+    "void main() {\n"
+    "    float alpha = 1.0;\n"
+    "    if (v_par2.x > 0.5) {\n"
+    "        if (meshblend > 0.5) {\n"
+    "            alpha = 0.5;\n"
+    "        } else {\n"
+    "            vec2 f = floor(gl_FragCoord.xy / scale);\n"
+    "            if (mod(f.x + f.y, 2.0) > 0.5) discard;\n"
+    "        }\n"
+    "    }\n"
+    "    vec3 rgb;\n"
+    "    if (v_par2.y > 0.5) {\n"
+    "        rgb = texture2D(colt, vec2(v_par.z, v_par.y)).rgb;\n"
+    "    } else {\n"
+    "        vec2 tl = v_uv * 2048.0 - v_rect.xy;\n"
+    "        vec4 c = bilinear(tl);\n"
+    "#if TRILINEAR\n"
+    /* where a pixel covers more than a texel, average four bilinear samples
+       over its footprint (dx, dy: how far one pixel steps in the texture) */
+    "        vec2 dx = dFdx(tl) * 0.25, dy = dFdy(tl) * 0.25;\n"
+    "        float rho = max(length(dx), length(dy)) * 4.0;\n"
+    "        if (rho > 1.0) {\n"
+    "            vec4 m = 0.25 * (bilinear(tl + dx + dy) + bilinear(tl + dx - dy) +\n"
+    "                             bilinear(tl - dx + dy) + bilinear(tl - dx - dy));\n"
+    "            c = mix(c, m, clamp(rho - 1.0, 0.0, 1.0));\n"
+    "        }\n"
+    "#endif\n"
+    "        if (c.a < 0.5) discard;\n"
+    "        rgb = c.rgb / c.a;\n"
+    "    }\n"
+    "    gl_FragColor = vec4(rgb, alpha);\n"
+    "}\n";
+
 /* The shaders are GLSL ES 1.00 without a version line. OpenGL ES gets
    mediump floats in fragment shaders (Mali-400 has no highp there; vertex
    shaders keep their default highp); desktop OpenGL compiles them as GLSL
    1.20, which has the same language but no precision qualifiers. */
-static GLuint compile(int es, GLenum type, const char *src)
+static GLuint compile(int es, GLenum type, const char *extra, const char *src)
 {
-    const char *head = !es ? "#version 120\n"
-                     : type == GL_FRAGMENT_SHADER ? "#version 100\nprecision mediump float;\n"
-                     : "#version 100\n";
-    const char *parts[2] = { head, src };
+    /* extra: defines, and #extension lines, which must come before the
+       precision statement */
+    const char *version = es ? "#version 100\n" : "#version 120\n";
+    const char *prec = es && type == GL_FRAGMENT_SHADER ? "precision mediump float;\n" : "";
+    const char *parts[4] = { version, extra ? extra : "", prec, src };
     GLuint s = glCreateShader(type);
     GLint ok;
-    glShaderSource(s, 2, parts, NULL);
+    glShaderSource(s, 4, parts, NULL);
     glCompileShader(s);
     glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
     if (!ok) {
@@ -165,12 +272,13 @@ static GLuint compile(int es, GLenum type, const char *src)
     return s;
 }
 
-static GLuint program(int es, const char *vs, const char *fs, const char *const *attrs, int nattrs)
+static GLuint program_ex(int es, const char *fs_extra, const char *vs, const char *fs,
+                         const char *const *attrs, int nattrs)
 {
     GLuint p = glCreateProgram();
     GLint ok;
-    glAttachShader(p, compile(es, GL_VERTEX_SHADER, vs));
-    glAttachShader(p, compile(es, GL_FRAGMENT_SHADER, fs));
+    glAttachShader(p, compile(es, GL_VERTEX_SHADER, NULL, vs));
+    glAttachShader(p, compile(es, GL_FRAGMENT_SHADER, fs_extra, fs));
     for (int i = 0; i < nattrs; i++)
         glBindAttribLocation(p, (GLuint)i, attrs[i]);
     glLinkProgram(p);
@@ -182,6 +290,11 @@ static GLuint program(int es, const char *vs, const char *fs, const char *const 
         return 0;
     }
     return p;
+}
+
+static GLuint program(int es, const char *vs, const char *fs, const char *const *attrs, int nattrs)
+{
+    return program_ex(es, NULL, vs, fs, attrs, nattrs);
 }
 
 static GLuint texture(int w, int h, GLenum fmt, GLenum filter)
@@ -210,8 +323,8 @@ m2_gl *m2gl_create(int es)
     g->idx = malloc(sizeof(uint16_t) * BATCH_INDEX);
     g->tile_prog = program(es, tile_vs, tile_fs, tile_attrs, 2);
     g->post_prog = program(es, tile_vs, post_fs, tile_attrs, 2);
-    g->poly_prog = program(es, poly_vs, poly_fs, poly_attrs, 3);
-    if (!g->scratch || !g->table || !g->pv || !g->idx || !g->tile_prog || !g->poly_prog || !g->post_prog) {
+    g->poly[M2_TEX_NEAREST].prog = program(es, poly_vs, poly_fs, poly_attrs, 3);
+    if (!g->scratch || !g->table || !g->pv || !g->idx || !g->tile_prog || !g->poly[0].prog || !g->post_prog) {
         m2gl_destroy(g);
         return NULL;
     }
@@ -219,14 +332,27 @@ m2_gl *m2gl_create(int es)
     g->u_tile_pal = glGetUniformLocation(g->tile_prog, "pal");
     g->u_tile_hipass = glGetUniformLocation(g->tile_prog, "hipass");
     g->u_tile_x = glGetUniformLocation(g->tile_prog, "xform");
-    g->u_scale = glGetUniformLocation(g->poly_prog, "scale");
-    g->u_meshblend = glGetUniformLocation(g->poly_prog, "meshblend");
     g->u_post_tex = glGetUniformLocation(g->post_prog, "tex");
     g->u_post_sat = glGetUniformLocation(g->post_prog, "sat");
     g->u_post_x = glGetUniformLocation(g->post_prog, "xform");
-    g->u_atlas = glGetUniformLocation(g->poly_prog, "atlas");
-    g->u_luma = glGetUniformLocation(g->poly_prog, "lumat");
-    g->u_colour = glGetUniformLocation(g->poly_prog, "colt");
+    /* filtered texturing; without it (or without derivatives, for trilinear)
+       the next simpler filter is used */
+    static const char *filter_attrs[] = { "pos", "uv", "par", "rect" };
+    g->poly[M2_TEX_BILINEAR].prog = program_ex(es, "#define TRILINEAR 0\n", poly_filter_vs, poly_filter_fs,
+                                               filter_attrs, 4);
+    g->poly[M2_TEX_TRILINEAR].prog = program_ex(es, es ? "#extension GL_OES_standard_derivatives : enable\n"
+                                                        "#define TRILINEAR 1\n" : "#define TRILINEAR 1\n",
+                                                poly_filter_vs, poly_filter_fs, filter_attrs, 4);
+    for (int f = 0; f < 3; f++) {
+        GLuint pr = g->poly[f].prog;
+        if (!pr)
+            continue;
+        g->poly[f].u_scale = glGetUniformLocation(pr, "scale");
+        g->poly[f].u_meshblend = glGetUniformLocation(pr, "meshblend");
+        g->poly[f].u_atlas = glGetUniformLocation(pr, "atlas");
+        g->poly[f].u_luma = glGetUniformLocation(pr, "lumat");
+        g->poly[f].u_colour = glGetUniformLocation(pr, "colt");
+    }
 
     for (int i = 0; i < 2; i++)
         g->tex_tiles[i] = texture(M2_SCREEN_W, M2_SCREEN_H, GL_LUMINANCE_ALPHA, GL_NEAREST);
@@ -263,7 +389,9 @@ void m2gl_destroy(m2_gl *g)
     glDeleteBuffers(1, &g->vbo_poly);
     glDeleteBuffers(1, &g->ibo_poly);
     glDeleteProgram(g->tile_prog);
-    glDeleteProgram(g->poly_prog);
+    for (int f = 0; f < 3; f++)
+        if (g->poly[f].prog)
+            glDeleteProgram(g->poly[f].prog);
     glDeleteProgram(g->post_prog);
     free(g->scratch);
     free(g->table);
@@ -424,28 +552,32 @@ static void draw_batch(m2_gl *g, int nv, int ni)
     glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, st, (const void *)offsetof(pvtx, x));
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, st, (const void *)offsetof(pvtx, u));
     glVertexAttribPointer(2, 4, GL_UNSIGNED_SHORT, GL_FALSE, st, (const void *)offsetof(pvtx, par));
+    glVertexAttribPointer(3, 4, GL_UNSIGNED_SHORT, GL_FALSE, st, (const void *)offsetof(pvtx, rect));
     glDrawElements(GL_TRIANGLES, ni, GL_UNSIGNED_SHORT, NULL);
 }
 
-static void draw_polys(m2_gl *g, const m2_geo *geo, int frame_w, int scale, int meshblend)
+static void draw_polys(m2_gl *g, const m2_geo *geo, int frame_w, int scale, int meshblend, int filter)
 {
     if (!geo->npolys)
         return;
     const float half_w = frame_w * 0.5f;
 
-    glUseProgram(g->poly_prog);
-    glUniform1i(g->u_atlas, 0);
-    glUniform1i(g->u_luma, 1);
-    glUniform1i(g->u_colour, 2);
-    glUniform1f(g->u_scale, (float)scale);
-    glUniform1f(g->u_meshblend, meshblend ? 1.0f : 0.0f);
+    if (filter < 0 || filter > M2_TEX_TRILINEAR)
+        filter = M2_TEX_NEAREST;
+    while (filter > 0 && !g->poly[filter].prog)
+        filter--;
+    glUseProgram(g->poly[filter].prog);
+    glUniform1i(g->poly[filter].u_atlas, 0);
+    glUniform1i(g->poly[filter].u_luma, 1);
+    glUniform1i(g->poly[filter].u_colour, 2);
+    glUniform1f(g->poly[filter].u_scale, (float)scale);
+    glUniform1f(g->poly[filter].u_meshblend, meshblend ? 1.0f : 0.0f);
     glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, g->atlas);
     glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, g->luma);
     glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, g->colour);
     glActiveTexture(GL_TEXTURE0);
-    for (int a = 0; a < 3; a++)
+    for (int a = 0; a < 4; a++)
         glEnableVertexAttribArray((GLuint)a);
-    glDisableVertexAttribArray(3);
     if (meshblend) {   /* back to front already, so plain alpha blending is right */
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -469,6 +601,12 @@ static void draw_polys(m2_gl *g, const m2_geo *geo, int frame_w, int scale, int 
             (uint16_t)(((t0 >> 13) & 1 ? PF_TRANSLUCENT : 0) | ((t0 >> 15) & 1 ? PF_MESH : 0) |
                        (textured ? 0 : PF_UNTEXTURED))
         };
+        /* the texture's place, size and mirroring, as m2geo cut the pieces */
+        uint16_t rect[4] = {
+            (uint16_t)((uint16_t)ax | ((t0 >> 8) & 1 ? 0x8000 : 0)),
+            (uint16_t)((uint16_t)ay | ((t0 >> 9) & 1 ? 0x8000 : 0)),
+            (uint16_t)(32 << (t0 & 7)), (uint16_t)(32 << ((t0 >> 3) & 7))
+        };
         for (int k = 0; k < p->nverts; k++) {
             const m2_gvert *v = &p->v[k];
             pvtx *o = &g->pv[nv + k];
@@ -479,6 +617,7 @@ static void draw_polys(m2_gl *g, const m2_geo *geo, int frame_w, int scale, int 
             o->u = (ax + v->u) / ATLAS;
             o->v = (ay + v->v) / ATLAS;
             memcpy(o->par, par, sizeof par);
+            memcpy(o->rect, rect, sizeof rect);
         }
         for (int k = 1; k + 1 < p->nverts; k++) {
             g->idx[ni++] = (uint16_t)nv;
@@ -536,7 +675,7 @@ void m2gl_draw_rect(m2_gl *g, const m2_board *b, const m2_tilegen *t, const m2_g
     glClear(GL_COLOR_BUFFER_BIT);
     draw_layers(g, 0, frame_w, view->stretch & M2_STRETCH_A_LOW, view->stretch & M2_STRETCH_B_LOW);
     if (geo)
-        draw_polys(g, geo, frame_w, scale, view->mesh_blend);
+        draw_polys(g, geo, frame_w, scale, view->mesh_blend, view->tex_filter);
     draw_layers(g, 1, frame_w, view->stretch & M2_STRETCH_A_HIGH, view->stretch & M2_STRETCH_B_HIGH);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
