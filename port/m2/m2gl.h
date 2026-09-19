@@ -30,10 +30,12 @@ void   m2gl_palette_written(m2_gl *g, uint32_t offset);
 void   m2gl_xlat_written(m2_gl *g);
 
 typedef struct {
-    int frame_w;     /* frame width in native pixels: 496 (4:3) up to 661 (16:9) */
+    int frame_w;     /* frame width in native pixels: 496 (4:3), 661 (16:9), wider with
+                        fill; narrower crops the sides (layers not stretched are cut) */
     int scale;       /* render at frame_w*scale x 384*scale */
     int stretch;     /* m2wide.h M2_STRETCH_*: tile layers drawn over the full width */
     int smooth;      /* linear filtering when scaling to the window */
+    int fill;        /* stretch the frame over the whole rectangle (distorts) */
     int mesh_blend;  /* mesh polygons as 50% translucency (the original's
                         MeshTransparency=1) instead of the hardware checkerboard */
     float saturation;   /* 1.0 = as the hardware; applied in the final pass */

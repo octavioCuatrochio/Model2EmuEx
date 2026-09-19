@@ -36,7 +36,8 @@ Example, 16:9 fullscreen with a pad-friendly shifter:
 | `--size WxH` | 1024x768; with widescreen 1365x768 (16:9) or 1229x768 (16:10) | window size |
 | `--fullscreen` | off | start fullscreen (F11 toggles) |
 | `--vsync` | off | sync buffer swaps to the display; pacing is by the game's own frame rate either way |
-| `--widescreen 16:9\|16:10\|off` | off | wider picture with extra field of view (see below); F9 toggles |
+| `--widescreen 16:9\|16:10\|fill\|off` | off | wider picture with extra field of view (see below); `fill` = the window's own ratio (4:3 up to 4:1); F9 toggles |
+| `--aspect keep\|stretch\|crop` | keep | when the window (or a player's half) is narrower than the picture: keep = bands above and below; stretch = squeeze it to fill (distorted); crop = fill it at the right proportions by cutting the picture's sides while the game shows 3D, with the HUD squeezed in whole (other screens are squeezed) |
 | `--scale N\|auto` | auto | render resolution: N times 496x384 (auto = window height / 384); F10 cycles |
 | `--sharp` | smooth | nearest-neighbour instead of linear filtering when scaling to the window |
 | `--mesh blend\|checker` | blend | mesh polygons (shadows, fences): 50% see-through, or the hardware's every-other-pixel checkerboard; F8 toggles |
@@ -44,7 +45,8 @@ Example, 16:9 fullscreen with a pad-friendly shifter:
 | `--gamma G` or `--gamma R,G,B` | 1.0 | colour gamma, as the original's GammaR/G/B (applies to tiles and 3D); above 1 brightens mid-tones |
 | `--shifter sequential\|hpattern` | hpattern | keyboard gears: one key per gear, or A/S step down/up (the original's UpDownGears) |
 | `--hold-gears` | off | H-pattern: drop to neutral when no gear key is held (the original's HoldGears) |
-| `--coop` | off | Daytona USA: two linked machines side by side, one per player (see "Linked play") |
+| `--coop` | off | Daytona USA: two linked machines in one window, one per player (see "Linked play") |
+| `--split side\|stack` | side | `--coop` layout: side by side, or one above the other (each player then gets a wide view that fills their half) |
 | `--pipeline on\|off` | on | on: the machine runs on its own thread, one frame ahead of the drawing (much faster on multi-core CPUs, one frame more input latency); off: emulate and draw each frame in turn |
 
 `-h` / `--help` (or no game name) prints a short usage summary and the game list.
@@ -137,14 +139,24 @@ ported from the original's Lua scripts, decide when it applies:
 
     build/m2emu --coop daytona
 
-Two complete Daytona boards run side by side in one window, linked through
-their network boards like two cabinets on the arcade's link: each player
-drives their own car and sees the other one on the track. Player 1 (left,
-red car 1) uses the keyboard and pad 1; player 2 (right, blue car 2) uses
+Two complete Daytona boards run in one window, linked through their network
+boards like two cabinets on the arcade's link: each player drives their own
+car and sees the other one on the track. Player 1 (left or top, red car 1)
+uses the keyboard and pad 1; player 2 (right or bottom, blue car 2) uses
 pad 2. Each side takes its own coin and start. Sound from both machines is
 mixed.
 
-The window starts twice as wide as usual. F3 resets both machines; the
+Layouts, on a 16:9 screen:
+
+| Command | Each player sees |
+|---------|------------------|
+| `--coop` | the normal 4:3 picture in their half, with bands above and below |
+| `--coop --aspect stretch` | the picture squeezed to fill their half (everything a third narrower) |
+| `--coop --aspect crop` | their half filled at the right proportions: the sides of the 3D view are cut, the HUD is squeezed in whole; menus are squeezed |
+| `--coop --split stack` | one above the other, each a wide view (extra field of view to the sides, as `--widescreen`) filling their half; menus stay 4:3 in the middle |
+
+Without `--size`, the window starts twice as wide as usual (16:9 with
+`--split stack`). F3 resets both machines; the
 other keys work as in single play. Each machine keeps its own save data
 (`daytona-coop1.DAT`, `daytona-coop2.DAT`), separate from single play's;
 link mode and car number are set on every start. About twice the CPU of

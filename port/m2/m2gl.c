@@ -496,7 +496,8 @@ void m2gl_draw(m2_gl *g, const m2_board *b, const m2_tilegen *t, const m2_geo *g
 void m2gl_draw_rect(m2_gl *g, const m2_board *b, const m2_tilegen *t, const m2_geo *geo,
                     const m2_view *view, int x, int y, int width, int height)
 {
-    int frame_w = view->frame_w < M2_SCREEN_W ? M2_SCREEN_W : view->frame_w;
+    /* narrower than 496: a cropped frame (the centre of the picture) */
+    int frame_w = view->frame_w < 64 ? 64 : view->frame_w;
     int scale = view->scale < 1 ? 1 : view->scale;
 
     glDisable(GL_DEPTH_TEST);
@@ -538,7 +539,9 @@ void m2gl_draw_rect(m2_gl *g, const m2_board *b, const m2_tilegen *t, const m2_g
        proportionally wider */
     double aspect = (4.0 / 3.0) * frame_w / M2_SCREEN_W;
     int vw = width, vh = (int)(width / aspect + 0.5);
-    if (vh > height) {
+    if (view->fill)
+        vh = height;
+    else if (vh > height) {
         vh = height;
         vw = (int)(height * aspect + 0.5);
     }

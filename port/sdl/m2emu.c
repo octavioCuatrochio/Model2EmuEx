@@ -2,14 +2,16 @@
  * SDL2 + OpenGL ES 2 frontend for the Model 2 port.
  *
  *   m2emu [-r romdir] [-n nvdir] [--vsync] [--fullscreen] [--size WxH]
- *         [--widescreen 16:9|16:10|off] [--scale N|auto] [--sharp]
+ *         [--widescreen 16:9|16:10|fill|off] [--scale N|auto] [--sharp]
  *         [--mesh blend|checker] [--saturation S] [--gamma G | --gamma R,G,B]
  *         [--shifter sequential|hpattern] [--hold-gears] [--pipeline on|off]
- *         [--coop] <game>
+ *         [--aspect keep|stretch|crop] [--coop [--split side|stack]] <game>
  *
  * --coop (Daytona USA): two boards linked through their network boards, as
- * two cabinets, in one window side by side; keyboard and pad 1 drive the
- * left one, pad 2 the right one.
+ * two cabinets, in one window side by side (--aspect stretch or crop fill
+ * each half); --split stack puts them one above the other with wide views that
+ * fill each half. Keyboard and pad 1 drive player 1 (left/top), pad 2
+ * player 2.
  *
  * Keys (from the original's input definitions): 5/6 coin, 1/2 start,
  * F1 service, F2 test, arrows, Z X C V / A S D F G game buttons.
@@ -207,6 +209,9 @@ int main(int argc, char **argv)
     int vsync = 0, fullscreen = 0, win_w = 0, win_h = 0, smooth = 1;
     int wide_on = 0, scale_opt = 0;   /* scale 0 = auto */
     double wide_ratio = 16.0 / 9.0;
+    int wide_fill = 0, wide_set = 0;  /* fill: the ratio of the window (or its half) */
+    int split_side = 1;               /* --coop: side by side, or one above the other */
+    int aspect_mode = 0;              /* --aspect: 0 keep, 1 stretch, 2 crop */
     int mesh_blend = 1, updown_gears = 0, hold_gears = 0, pipelined = 1, coop = 0;
     float saturation = 1.0f, gamma[3] = { 1.0f, 1.0f, 1.0f };
 
@@ -231,8 +236,24 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--widescreen") && i + 1 < argc) {
             int a = 0, b = 0;
             i++;
-            if (sscanf(argv[i], "%d:%d", &a, &b) == 2 && a > 0 && b > 0) { wide_ratio = (double)a / b; wide_on = 1; }
+            wide_set = 1;
+            wide_fill = !strcmp(argv[i], "fill");
+            if (wide_fill) wide_on = 1;
+            else if (sscanf(argv[i], "%d:%d", &a, &b) == 2 && a > 0 && b > 0) { wide_ratio = (double)a / b; wide_on = 1; }
             else wide_on = 0;
+        }
+        else if (!strcmp(argv[i], "--split") && i + 1 < argc) {
+            i++;
+            if (!strcmp(argv[i], "side")) split_side = 1;
+            else if (!strcmp(argv[i], "stack")) split_side = 0;
+            else { fprintf(stderr, "--split: side or stack\n"); return 1; }
+        }
+        else if (!strcmp(argv[i], "--aspect") && i + 1 < argc) {
+            i++;
+            if (!strcmp(argv[i], "keep")) aspect_mode = 0;
+            else if (!strcmp(argv[i], "stretch")) aspect_mode = 1;
+            else if (!strcmp(argv[i], "crop")) aspect_mode = 2;
+            else { fprintf(stderr, "--aspect: keep, stretch or crop\n"); return 1; }
         }
         else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) { game_name = NULL; break; }
         else if (argv[i][0] != '-') game_name = argv[i];
@@ -242,10 +263,10 @@ int main(int argc, char **argv)
         int n;
         const m2_game *list = m2_game_list(&n);
         fprintf(stderr, "usage: m2emu [-r romdir] [-n nvdir] [--vsync] [--fullscreen] [--size WxH]\n"
-                        "             [--widescreen 16:9|16:10|off] [--scale N|auto] [--sharp]\n"
+                        "             [--widescreen 16:9|16:10|fill|off] [--scale N|auto] [--sharp]\n"
                         "             [--mesh blend|checker] [--saturation S] [--gamma G | --gamma R,G,B]\n"
                         "             [--shifter sequential|hpattern] [--hold-gears] [--pipeline on|off]\n"
-                        "             [--coop] <game>\n"
+                        "             [--aspect keep|stretch|crop] [--coop [--split side|stack]] <game>\n"
                         "keys: Esc quit, F3 reset, P pause, Tab fast forward, F7 saturation, F8 mesh,\n"
                         "      F9 widescreen, F10 scale, F11 fullscreen. Full guide: port/README.md\n"
                         "games:");
@@ -268,6 +289,8 @@ int main(int argc, char **argv)
         return 1;
     }
     nplayers = coop ? 2 : 1;
+    if (coop && !split_side && !wide_set)   /* one above the other: wide views fill each half */
+        wide_on = wide_fill = 1;
     mkdirs(nvdir);
     for (int c = 0; c < 3; c++)
         if (gamma[c] <= 0) gamma[c] = 1.0f;
@@ -327,7 +350,10 @@ int main(int argc, char **argv)
     snprintf(title, sizeof title, "%s - Model 2", game->title);
     if (win_w <= 0 || win_h <= 0) {
         win_h = 768;
-        win_w = (int)(win_h * (wide_on ? wide_ratio : 4.0 / 3.0) + 0.5) * nplayers;
+        if (coop && !split_side)
+            win_w = 1365;   /* 16:9, each player 32:9 */
+        else
+            win_w = (int)(win_h * (wide_on && !wide_fill ? wide_ratio : 4.0 / 3.0) + 0.5) * nplayers;
     }
     SDL_Window *win = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_w, win_h,
                                        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE |
@@ -556,32 +582,59 @@ int main(int argc, char **argv)
             }
         }
 
-        /* draw the collected frames (or the last ones again), side by side */
+        /* draw the collected frames (or the last ones again); --coop: player 1
+           above (or left), player 2 below (or right) */
         int w, h;
         SDL_GL_GetDrawableSize(win, &w, &h);
-        int vw = w / nplayers;
         for (int i = 0; i < nplayers; i++) {
             player *p = &pl[i];
             if (got)   /* after start and reset the pipe reports everything as written */
                 p->vb = m2pipe_apply(p->pipe, &p->replay, &p->pf);
+            int rx = 0, ry = 0, rw = w, rh = h;   /* GL window coordinates, origin bottom left */
+            if (nplayers > 1 && split_side) {   /* player 1 left */
+                rx = i * (w / nplayers);
+                rw = i == nplayers - 1 ? w - rx : w / nplayers;
+            } else if (nplayers > 1) {
+                rh = h / nplayers;
+                ry = (nplayers - 1 - i) * rh;
+                if (i == 0) rh = h - ry;
+            }
+            /* the frame's aspect: 4:3, a fixed wide ratio, or that of its
+               rectangle (fill; never narrower than 4:3, at most 4:1) */
+            double rect = (double)rw / (rh > 0 ? rh : 1);
+            double ratio = !wide_on ? 4.0 / 3.0 : wide_fill ? rect : wide_ratio;
+            if (ratio < 4.0 / 3.0) ratio = 4.0 / 3.0;
+            if (ratio > 4.0) ratio = 4.0;
+            /* a rectangle narrower than the frame (side by side on a wide
+               screen): keep = bands above and below; stretch = squeezed;
+               crop = while the game shows 3D, the frame's centre at the
+               right proportions, with the HUD (every layer but the low-
+               priority background, i.e. the sky) squeezed in whole; other
+               screens are squeezed */
+            int crop = aspect_mode == 2 && rect < ratio && p->pf.wide.widescreen;
+            int squeeze = aspect_mode == 1 || (aspect_mode == 2 && rect < ratio && !crop);
+            if (crop)
+                ratio = rect < 0.5 ? 0.5 : rect;
             /* widescreen: a wider frame; the game's rule decides each frame
                whether the 3D sees the extra width and which layers stretch */
             m2_view view;
-            view.frame_w = wide_on ? ((int)(M2_SCREEN_W * wide_ratio * 0.75 + 0.5) + 1) & ~1 : M2_SCREEN_W;
-            view.stretch = wide_on ? p->pf.wide.stretch : 0;
+            view.frame_w = ((int)(M2_SCREEN_W * ratio * 0.75 + 0.5) + 1) & ~1;
+            view.stretch = crop ? M2_STRETCH_A_LOW | M2_STRETCH_A_HIGH | M2_STRETCH_B_HIGH
+                                : wide_on ? p->pf.wide.stretch : 0;
             view.smooth = smooth;
+            view.fill = squeeze;
             view.mesh_blend = mesh_blend;
             view.saturation = saturation;
-            view.scale = scale_opt ? scale_opt : h / M2_SCREEN_H;
+            view.scale = scale_opt ? scale_opt : rh / M2_SCREEN_H;
             if (view.scale < 1) view.scale = 1;
             p->geo->wide_extra = (view.frame_w - M2_SCREEN_W) * 0.5f;
-            p->geo->wide_fov = wide_on && p->pf.wide.widescreen;
+            p->geo->wide_fov = wide_on && p->pf.wide.widescreen && !crop;
             if (got) {
                 m2tile_render(p->tg, p->vb);
                 m2geo_run(p->geo, p->vb);
             }
             if (p->vb)
-                m2gl_draw_rect(p->gl, p->vb, p->tg, p->geo, &view, i * vw, 0, i == nplayers - 1 ? w - i * vw : vw, h);
+                m2gl_draw_rect(p->gl, p->vb, p->tg, p->geo, &view, rx, ry, rw, rh);
         }
         const m2_pipe_frame *pf = &pl[0].pf;
         if (bench && got) {   /* M2EMU_BENCH=frames: unthrottled, timing split */
