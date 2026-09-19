@@ -1,0 +1,91 @@
+# Builds the port (port/) for Linux, Windows and Android on every push and
+# pull request, and keeps the programs as downloadable artifacts (Actions tab
+# -> the run -> Artifacts). ROMs are not included.
+
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux (desktop OpenGL and OpenGL ES)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL2 and zlib
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev zlib1g-dev
+
+      - name: Build (desktop OpenGL)
+        run: make -C port -j"$(nproc)"
+
+      - name: Build (OpenGL ES 2)
+        run: make -C port -j"$(nproc)" GL=gles BUILD=build-gles
+
+      - name: Collect
+        run: |
+          mkdir -p dist/gl dist/gles
+          cp port/build/m2emu port/build/m2run dist/gl/
+          cp port/build-gles/m2emu port/build-gles/m2run dist/gles/
+          cp port/README.md dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m2emu-linux-x86_64
+          path: dist/
+
+  windows:
+    name: Windows (MSYS2, MinGW-w64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: make
+          pacboy: gcc:p SDL2:p zlib:p pkgconf:p
+
+      - name: Build (desktop OpenGL)
+        run: make -C port -j"$(nproc)"
+
+      - name: Collect, with the DLLs the programs need
+        run: |
+          mkdir -p dist
+          cp port/build/m2emu.exe port/build/m2run.exe port/README.md dist/
+          # every DLL from the MSYS2 environment they link to (SDL2, zlib, ...)
+          for exe in dist/*.exe; do
+            ldd "$exe" | awk '{print $3}' | grep -i '^/ucrt64/' || true
+          done | sort -u | xargs -r -I{} cp {} dist/
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m2emu-windows-x86_64
+          path: dist/
+
+  android:
+    name: Android (headless m2run, armeabi-v7a)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build with the runner's Android NDK
+        run: make -C port -j"$(nproc)" android NDK="$ANDROID_NDK_LATEST_HOME"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m2run-android-armeabi-v7a
+          path: port/build-android/m2run
