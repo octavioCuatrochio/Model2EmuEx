@@ -4,6 +4,11 @@ A decompilation of ElSemi's Model 2 Emulator and a portable C port of it
 (`port/`), aimed at Linux x86 PCs and at an Android TV box with an
 Allwinner H3 (32-bit ARM Cortex-A7, Mali-400 GPU).
 
+<img width="1366" height="768" alt="Screenshot_20260918_221010" src="https://github.com/user-attachments/assets/bb57f231-c3cc-43d4-832c-a2804bb6007a" />
+
+<img width="1366" height="768" alt="Screenshot_20260918_221818" src="https://github.com/user-attachments/assets/a0b4b538-d89e-41be-a5fc-1698edfd7e23" />
+
+
 ## Branches
 - `master`: the decompilation and the portable port, everything on one thread.
 - `optimized`: the same port, faster: sound, emulation and drawing on separate threads, and less work per frame, with the same pictures and sound.
