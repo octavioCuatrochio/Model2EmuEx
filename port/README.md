@@ -64,6 +64,14 @@ headless tool alone can be built with the Android NDK:
 
 There is no Android frontend yet; its OpenGL ES build will use `GL=gles`.
 
+### Automatic builds (GitHub Actions)
+
+Every push and pull request is built by `.github/workflows/build.yml`: Linux
+(desktop OpenGL and OpenGL ES), Windows (MSYS2, with the DLLs it needs) and
+the Android `m2run`. The programs are on the run's page in the Actions tab,
+under Artifacts (ROMs not included). "Run workflow" on the Build workflow
+starts one by hand.
+
 ### Build options
 
 `CFLAGS`, `CXXFLAGS` and `LDFLAGS` can be given in the environment (for
