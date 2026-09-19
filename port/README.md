@@ -1,7 +1,8 @@
 # Model 2 port — user guide
 
 A portable C port of ElSemi's Sega Model 2 Emulator 1.1a, run by an SDL2 +
-OpenGL frontend (`m2emu`) on Linux and Windows. The target games are Daytona USA
+OpenGL frontend (`m2emu`, with a launcher for games and settings) on Linux
+and Windows. The target games are Daytona USA
 (`daytona`), Virtua Fighter 2 (`vf2`) and Sega Rally Championship
 (`srallyc`), with video, sound and input. Other games in the list may boot but
 haven't been tested.
@@ -81,25 +82,54 @@ make BUILD=build-tsan`). `SDL_CFLAGS`/`SDL_LIBS` and
 
 ## Running
 
-    build/m2emu [options] <game>
+    build/m2emu                              # the launcher
+    build/m2emu --no-gui [options] <game>    # a game straight from the command line
 
 ROMs are MAME-style zip sets (`daytona.zip`, `vf2.zip`, `srallyc.zip`, ...).
 Each file is looked up in the game's zip, then its parent's, then
-`model2.zip`. Run `build/m2emu` without a game to list the supported names.
+`model2.zip`. `build/m2emu --help` lists the options and the supported game
+names.
 
-Example, 16:9 fullscreen with a pad-friendly shifter:
+Example without the launcher, 16:9 fullscreen with a pad-friendly shifter:
 
-    build/m2emu -r ~/roms --widescreen 16:9 --fullscreen --shifter sequential daytona
+    build/m2emu --no-gui -r ~/roms --widescreen 16:9 --fullscreen --shifter sequential daytona
+
+## Launcher
+
+`m2emu` on its own opens a window with two tabs. It works with the mouse,
+the keyboard (arrows, Enter, Tab) or a pad (d-pad, A to choose, B to go
+back).
+
+- **Games**: choose the folder with the ROM zip files (type it, or Browse
+  for it). The games found there are listed with their set name, board,
+  whether they're known to work with this emulator, and whether every ROM
+  file is there. Select one and press Play, or double-click it. For
+  Daytona USA, "Two players, linked" starts linked play (see below).
+  In a game, Esc comes back to the launcher; closing the window quits.
+- **Configuration**: every option below, grouped (display, colour, timing,
+  controls, linked play, folders), each with an explanation. Changes are
+  saved at once, with the ROM folder and the last game played, in
+  `m2emu.ini`: next to `m2emu.exe` on Windows, in
+  `$XDG_CONFIG_HOME/m2emu/` or `~/.config/m2emu/` on Linux.
+
+A game named on the command line (`m2emu daytona`) is selected in the
+launcher. The other command-line options only apply with `--no-gui`; the
+launcher uses its own settings.
 
 ## Options
 
+These are the command-line forms (with `--no-gui`); the launcher's
+Configuration tab has the same settings.
+
 | Option | Default | Effect |
 |--------|---------|--------|
+| `--no-gui` | off | start the game named on the command line, without the launcher |
 | `-r DIR` | `$M2_ROMS`, else `./roms` | ROM directory |
 | `-n DIR` | Linux: `$XDG_DATA_HOME/m2emu/NVDATA`, else `~/.local/share/m2emu/NVDATA`; Windows: `NVDATA` next to `m2emu.exe` | where save data goes (see below) |
 | `--size WxH` | 1024x768; with widescreen 1365x768 (16:9) or 1229x768 (16:10) | window size |
 | `--fullscreen` | off | start fullscreen (F11 toggles) |
 | `--vsync` | off | sync buffer swaps to the display; pacing is by the game's own frame rate either way |
+| `--no-frame-cap` | capped | run as fast as the computer can instead of at the game's 57.5 frames per second (the sound keeps its normal speed) |
 | `--widescreen 16:9\|16:10\|fill\|off` | off | wider picture with extra field of view (see below); `fill` = the window's own ratio (4:3 up to 4:1); F9 toggles |
 | `--aspect keep\|stretch\|crop` | keep | when the window (or a player's half) is narrower than the picture: keep = bands above and below; stretch = squeeze it to fill (distorted); crop = fill it at the right proportions by cutting the picture's sides while the game shows 3D, with the HUD squeezed in whole (other screens are squeezed) |
 | `--scale N\|auto` | auto | render resolution: N times 496x384 (auto = window height / 384); F10 cycles |
@@ -113,14 +143,14 @@ Example, 16:9 fullscreen with a pad-friendly shifter:
 | `--split side\|stack` | side | `--coop` layout: side by side, or one above the other (each player then gets a wide view that fills their half) |
 | `--pipeline on\|off` | on | on: the machine runs on its own thread, one frame ahead of the drawing (much faster on multi-core CPUs, one frame more input latency); off: emulate and draw each frame in turn |
 
-`-h` / `--help` (or no game name) prints a short usage summary and the game list.
-Unknown options stop the program with a message.
+`-h` / `--help` (or `--no-gui` without a game) prints a short usage summary
+and the game list. Unknown options stop the program with a message.
 
 ## Frontend keys
 
 | Key | Action |
 |-----|--------|
-| Esc | quit (saves backup RAM / EEPROM) |
+| Esc | back to the launcher, or quit with `--no-gui` (saves backup RAM / EEPROM either way) |
 | F3 | reset the machine (save data kept) |
 | P | pause |
 | Tab (hold) | fast forward (sound keeps normal speed; some sound commands may be dropped) |
@@ -201,9 +231,9 @@ ported from the original's Lua scripts, decide when it applies:
 
 ## Linked play (`--coop`, Daytona USA)
 
-    build/m2emu --coop daytona
+    build/m2emu --no-gui --coop daytona
 
-Two complete Daytona boards run in one window, linked through their network
+In the launcher: select Daytona USA and tick "Two players, linked". Two complete Daytona boards run in one window, linked through their network
 boards like two cabinets on the arcade's link: each player drives their own
 car and sees the other one on the track. Player 1 (left or top, red car 1)
 uses the keyboard and pad 1; player 2 (right or bottom, blue car 2) uses
@@ -245,6 +275,13 @@ over. With no file, Daytona starts with its link setting on "single"
 | `M2EMU_KEYS2=...` | m2emu | the same for player 2 with `--coop` |
 | `M2EMU_BENCH=N` | m2emu | run N frames unthrottled and print a timing split |
 | `M2EMU_ACTIONS=iter:a,...` | m2emu | frontend actions by main-loop iteration: `p` pause/unpause, `r` reset (F3), `q` quit |
+| `M2EMU_GUI_SHOT=file.ppm:N` | m2emu | save the launcher's picture after N frames, then quit |
+| `M2EMU_GUI_TAB=games\|config` | m2emu | open the launcher on that tab |
+| `M2EMU_GUI_PLAY=1` | m2emu | press Play once, for the selected (last) game |
+| `M2EMU_GUI_BROWSE=1` | m2emu | open the launcher's folder browser |
+
+The M2EMU_SHOT, KEYS, BENCH and ACTIONS variables work in games started
+from the launcher too (the game then returns to it).
 
 ## Performance and threads
 
@@ -278,7 +315,7 @@ To check that a change leaves the output alone, compare two builds:
 |------|-----|
 | 3D and tile output | `M2_GEOHASH=1 build/m2run <game> 3000 <romdir>`: the checksums must match (also with `M2_PIPE=1`, which goes through the hand-over, and `M2_RESET_AT`) |
 | sound | `M2_WAV=out.wav build/m2run ...`: the files must be byte-identical |
-| the picture | `M2EMU_SHOT=file.ppm:frame build/m2emu ...` with a fresh `-n` directory: `cmp` the files |
+| the picture | `M2EMU_SHOT=file.ppm:frame build/m2emu --no-gui ...` with a fresh `-n` directory: `cmp` the files |
 | speed | `M2EMU_BENCH=N` (frontend) and `M2_BENCH=1` (m2run) print a per-part timing split |
 
 ## Headless tool: m2run
@@ -318,7 +355,8 @@ Controlled by environment variables:
 | `m2/` | board, ROM loader, 2D tile layers, 3D, renderer, input, widescreen rules, frame hand-over between threads, network link between boards; `m2/README.md` and `m2/QUIRKS.md` |
 | `snd/` | sound boards (SCSP, MultiPCM, YM3438), `snd/QUIRKS.md` |
 | `m68k/`, `ymfm/` | third-party cores: Musashi 68000 (MIT), ymfm (BSD-3) |
-| `sdl/` | the desktop frontend |
+| `sdl/` | the desktop frontend: `m2emu.c` (games), `launcher.cpp` (the launcher), `options.c` (command line and `m2emu.ini`), `dirlist.c` (folder listing), `imgui_impl_m2gl.cpp` (Dear ImGui drawn with the port's GL layer), `font_roboto.inc` (Roboto Medium, Apache License 2.0) |
+| `imgui/` | Dear ImGui 1.92.9b (MIT, `imgui/LICENSE.txt`): its core and SDL2 backend, for the launcher |
 
 Each `QUIRKS.md` lists the original's bugs, and where and why the port
 differs from it.

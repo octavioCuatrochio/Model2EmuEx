@@ -142,7 +142,9 @@ static int zip_read(zipf *z, long cdpos, uint8_t *dst, uint32_t size)
     return ok;
 }
 
-/* orig 0x4f7980: game zip, loose directory, then the parent set */
+/* orig 0x4f7980: game zip, loose directory, then the parent set.
+   dst NULL: only checks that the file is there, with the right size (and
+   CRC, in a zip). */
 static int find_file(const m2_game *g, const char *const *dirs, const char *file,
                      uint32_t crc, uint32_t size, uint8_t *dst)
 {
@@ -161,7 +163,7 @@ static int find_file(const m2_game *g, const char *const *dirs, const char *file
                 if (e >= 0) {
                     const uint8_t *c = z.cd + e;
                     if (rd32(c + 24) == size && (!crc || rd32(c + 16) == crc))
-                        ok = zip_read(&z, e, dst, size);
+                        ok = dst ? zip_read(&z, e, dst, size) : 0;
                 }
                 zip_close(&z);
                 if (!ok)
@@ -170,7 +172,13 @@ static int find_file(const m2_game *g, const char *const *dirs, const char *file
             snprintf(path, sizeof path, "%s/%s/%s", dirs[d], sets[s], file);
             FILE *f = fopen(path, "rb");
             if (f) {
-                size_t n = fread(dst, 1, size, f);
+                size_t n;
+                if (dst) {
+                    n = fread(dst, 1, size, f);
+                } else {
+                    fseek(f, 0, SEEK_END);
+                    n = (size_t)ftell(f);
+                }
                 fclose(f);
                 if (n == size)
                     return 0;
@@ -243,6 +251,20 @@ int m2_load_roms(const m2_game *g, const char *const *dirs, m2_regions *r,
     if (missing && log)
         log("There are missing files. Load aborted");
     return missing ? -1 : 0;
+}
+
+int m2_check_roms(const m2_game *g, const char *const *dirs, int *total)
+{
+    int missing = 0, n = 0;
+    for (const m2_rom_entry *e = g->roms; e->type >= 0; e++)
+        if (e->type == 1) {
+            n++;
+            if (find_file(g, dirs, e->file, e->crc, e->size, NULL))
+                missing++;
+        }
+    if (total)
+        *total = n;
+    return missing;
 }
 
 void m2_free_roms(m2_regions *r)

@@ -7,7 +7,7 @@ Allwinner H3 (32-bit ARM Cortex-A7, Mali-400 GPU).
 ## Branches
 - `master`: the decompilation and the portable port, everything on one thread.
 - `optimized`: the same port, faster (sound, emulation and drawing on separate threads, less work per frame, same pictures and sound), and building for Windows and desktop OpenGL too.
-- `coop`: `optimized` plus two-player linked play of Daytona USA in one window (`--coop`, split screen).
+- `coop`: `optimized` plus two-player linked play of Daytona USA in one window (`--coop`, split screen), and a launcher window (Games and Configuration tabs).
 
 ## Games known to work
 - Daytona USA (`daytona`): played through races, with sound, controls and gears.
@@ -20,12 +20,17 @@ Allwinner H3 (32-bit ARM Cortex-A7, Mali-400 GPU).
 - Android on the Allwinner H3: the target, untested yet. The headless tool `m2run` builds for it with the NDK (`make android`, `optimized` and `coop` branches); there is no Android frontend yet.
 
 ## Run example
-Daytona USA in a 1920x1080 window with the colour saturation at 1.5, ROMs
-(MAME-style `daytona.zip`) in `~/Desktop/ROMs`:
-
     cd port
     make
-    build/m2emu -r ~/Desktop/ROMs --size 1920x1080 --saturation 1.5 daytona
+    build/m2emu
+
+opens the launcher: choose the ROM folder in the Games tab, set the options
+in the Configuration tab, and play.
+
+Straight from the command line, Daytona USA in a 1920x1080 window with the
+colour saturation at 1.5, ROMs (MAME-style `daytona.zip`) in `~/Desktop/ROMs`:
+
+    build/m2emu --no-gui -r ~/Desktop/ROMs --size 1920x1080 --saturation 1.5 daytona
 
 Add `--fullscreen` to use the whole screen at its own resolution (1080p on
 a 1080p display). On Windows the program is `build\m2emu.exe` (building:

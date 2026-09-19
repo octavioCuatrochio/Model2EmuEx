@@ -1,24 +1,28 @@
 /*
- * SDL2 + OpenGL ES 2 frontend for the Model 2 port.
+ * SDL2 + OpenGL frontend for the Model 2 port.
  *
- *   m2emu [-r romdir] [-n nvdir] [--vsync] [--fullscreen] [--size WxH]
- *         [--widescreen 16:9|16:10|fill|off] [--scale N|auto] [--sharp]
- *         [--mesh blend|checker] [--saturation S] [--gamma G | --gamma R,G,B]
- *         [--shifter sequential|hpattern] [--hold-gears] [--pipeline on|off]
- *         [--aspect keep|stretch|crop] [--coop [--split side|stack]] <game>
+ *   m2emu                                 the launcher (launcher.cpp): games and settings
+ *   m2emu --no-gui [options] <game>       a game straight from the command line
+ *
+ * options: [-r romdir] [-n nvdir] [--vsync] [--no-frame-cap] [--fullscreen]
+ *          [--size WxH] [--widescreen 16:9|16:10|fill|off] [--scale N|auto]
+ *          [--sharp] [--mesh blend|checker] [--saturation S]
+ *          [--gamma G | --gamma R,G,B] [--shifter sequential|hpattern]
+ *          [--hold-gears] [--pipeline on|off] [--aspect keep|stretch|crop]
+ *          [--coop [--split side|stack]]
  *
  * --coop (Daytona USA): two boards linked through their network boards, as
  * two cabinets, in one window side by side (--aspect stretch or crop fill
- * each half); --split stack puts them one above the other with wide views that
- * fill each half. Keyboard and pad 1 drive player 1 (left/top), pad 2
+ * each half); --split stack puts them one above the other with wide views
+ * that fill each half. Keyboard and pad 1 drive player 1 (left/top), pad 2
  * player 2. Only player 1's machine is heard.
  *
  * Keys (from the original's input definitions): 5/6 coin, 1/2 start,
  * F1 service, F2 test, arrows, Z X C V / A S D F G game buttons.
- * Frontend: Esc quit, F3 reset, P pause, Tab (hold) fast forward,
- * F7 saturation (1.0, 1.2, 1.4), F8 mesh blend/checker, F9 widescreen on/off,
- * F10 render scale (auto, 1-4), F11 fullscreen.
- * Pads (up to 2, hot-plug): see m2/m2input.c for the layout.
+ * Frontend: Esc back to the launcher (quit with --no-gui), F3 reset,
+ * P pause, Tab (hold) fast forward, F7 saturation (1.0, 1.2, 1.4), F8 mesh
+ * blend/checker, F9 widescreen on/off, F10 render scale (auto, 1-4), F11
+ * fullscreen. Pads (up to 2, hot-plug): see m2/m2input.c for the layout.
  */
 #include "../m2/m2board.h"
 #include "../m2/m2geo.h"
@@ -31,19 +35,14 @@
 #include "../snd/m2snd.h"
 
 #include "../m2/m2glapi.h"
+#include "launcher.h"
+#include "options.h"
 
 #include <SDL2/SDL.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#ifdef _WIN32
-#include <direct.h>
-#define make_dir(p) _mkdir(p)
-#else
-#define make_dir(p) mkdir((p), 0755)
-#endif
 
 /* The GL flavour this build asks for: desktop OpenGL 2.1 or later
    (default), or OpenGL ES 2 with `make GL=gles` (M2_GLES). */
@@ -66,7 +65,7 @@ typedef struct {
     m2_input_state in;
     const m2_board *vb;            /* the drawn frame's video memories */
     m2_pipe_frame pf;
-    char      nvpath[1200];
+    char      nvpath[2048];
     /* board thread: `go` starts a frame, `done` says it is captured;
        between the two the main thread leaves the board alone */
     SDL_Thread *thread;
@@ -140,7 +139,14 @@ static void script_keys(const char *script, uint32_t frame, uint8_t *key)
     }
 }
 
-static void logmsg(const char *m) { fprintf(stderr, "%s\n", m); }
+/* ROM loader messages; the first is kept for the launcher to show */
+static char first_log[256];
+static void logmsg(const char *m)
+{
+    fprintf(stderr, "%s\n", m);
+    if (!first_log[0])
+        snprintf(first_log, sizeof first_log, "%s", m);
+}
 
 /* SDL scancode -> DirectInput scan code (PC set 1), for the keys games use */
 static uint8_t dik_from_sdl(SDL_Scancode sc)
@@ -183,117 +189,57 @@ static int pad_button_from_sdl(int b)
     return b >= 0 && b < M2PAD_BUTTONS ? b : -1;   /* same order as SDL_GameControllerButton */
 }
 
-static void mkdirs(const char *path)
+
+/* The window a game asks for: the size set, or 768 high and as wide as
+   the picture needs (twice as wide for two players side by side). */
+static void game_window_size(const m2_options *o, int *w, int *h)
 {
-    char tmp[1024];
-    snprintf(tmp, sizeof tmp, "%s", path);
-    for (char *p = tmp + 1; *p; p++)
-        if (*p == '/' || *p == '\\') {
-            char c = *p;
-            *p = 0;
-            make_dir(tmp);
-            *p = c;
-        }
-    make_dir(tmp);
+    if (o->win_w > 0 && o->win_h > 0) {
+        *w = o->win_w;
+        *h = o->win_h;
+        return;
+    }
+    *h = 768;
+    if (o->coop && !o->split_side)
+        *w = 1365;   /* 16:9, each player 32:9 */
+    else
+        *w = (int)(768 * (o->wide == M2_WIDE_RATIO ? o->wide_ratio : 4.0 / 3.0) + 0.5) * (o->coop ? 2 : 1);
 }
 
-int main(int argc, char **argv)
+/* One game, in `win` (GL context current, functions loaded). Returns 0
+   when the player leaves with Esc (from the launcher), 1 when the window
+   is closed (or Esc without the launcher), -1 if it can't start (why, in
+   err). */
+static int run_game(SDL_Window *win, const m2_options *o, const char *game_name, int from_gui,
+                    char *err, int err_size)
 {
-    const char *romdir = getenv("M2_ROMS") ? getenv("M2_ROMS") : "roms";
-    const char *game_name = NULL;
-    char nvdir[1024] = "";
-    int vsync = 0, fullscreen = 0, win_w = 0, win_h = 0, smooth = 1;
-    int wide_on = 0, scale_opt = 0;   /* scale 0 = auto */
-    double wide_ratio = 16.0 / 9.0;
-    int wide_fill = 0, wide_set = 0;  /* fill: the ratio of the window (or its half) */
-    int split_side = 1;               /* --coop: side by side, or one above the other */
-    int aspect_mode = 0;              /* --aspect: 0 keep, 1 stretch, 2 crop */
-    int mesh_blend = 1, updown_gears = 0, hold_gears = 0, pipelined = 1, coop = 0;
-    float saturation = 1.0f, gamma[3] = { 1.0f, 1.0f, 1.0f };
+#define FAIL(...) do { snprintf(err, (size_t)err_size, __VA_ARGS__); goto fail; } while (0)
+    /* the settings, under the names the code below has always used */
+    const char *romdir = o->romdir;
+    char nvdir[1024];
+    m2opt_nvdir(o, nvdir, sizeof nvdir);
+    int vsync = o->vsync, fullscreen = o->fullscreen, smooth = o->smooth, frame_cap = o->frame_cap;
+    int wide_on = o->wide == M2_WIDE_RATIO || o->wide == M2_WIDE_FILL;
+    int wide_fill = o->wide == M2_WIDE_FILL, wide_set = o->wide != M2_WIDE_DEFAULT;
+    double wide_ratio = o->wide == M2_WIDE_RATIO ? o->wide_ratio : 16.0 / 9.0;
+    int scale_opt = o->scale, split_side = o->split_side, aspect_mode = o->aspect;
+    int mesh_blend = o->mesh_blend, updown_gears = o->updown_gears, hold_gears = o->hold_gears;
+    int pipelined = o->pipelined, coop = o->coop;
+    float saturation = o->saturation, gamma[3] = { o->gamma[0], o->gamma[1], o->gamma[2] };
+    m2_net *net = NULL;
+    int quit_app = 0;
 
-    for (int i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "-r") && i + 1 < argc) romdir = argv[++i];
-        else if (!strcmp(argv[i], "-n") && i + 1 < argc) snprintf(nvdir, sizeof nvdir, "%s", argv[++i]);
-        else if (!strcmp(argv[i], "--vsync")) vsync = 1;
-        else if (!strcmp(argv[i], "--fullscreen")) fullscreen = 1;
-        else if (!strcmp(argv[i], "--sharp")) smooth = 0;
-        else if (!strcmp(argv[i], "--shifter") && i + 1 < argc) updown_gears = !strcmp(argv[++i], "sequential");
-        else if (!strcmp(argv[i], "--hold-gears")) hold_gears = 1;
-        else if (!strcmp(argv[i], "--pipeline") && i + 1 < argc) pipelined = strcmp(argv[++i], "off") != 0;
-        else if (!strcmp(argv[i], "--coop")) coop = 1;
-        else if (!strcmp(argv[i], "--mesh") && i + 1 < argc) mesh_blend = strcmp(argv[++i], "checker") != 0;
-        else if (!strcmp(argv[i], "--saturation") && i + 1 < argc) saturation = (float)atof(argv[++i]);
-        else if (!strcmp(argv[i], "--gamma") && i + 1 < argc) {
-            int n = sscanf(argv[++i], "%f,%f,%f", &gamma[0], &gamma[1], &gamma[2]);
-            if (n == 1) gamma[1] = gamma[2] = gamma[0];
-        }
-        else if (!strcmp(argv[i], "--size") && i + 1 < argc) sscanf(argv[++i], "%dx%d", &win_w, &win_h);
-        else if (!strcmp(argv[i], "--scale") && i + 1 < argc) { i++; scale_opt = !strcmp(argv[i], "auto") ? 0 : atoi(argv[i]); }
-        else if (!strcmp(argv[i], "--widescreen") && i + 1 < argc) {
-            int a = 0, b = 0;
-            i++;
-            wide_set = 1;
-            wide_fill = !strcmp(argv[i], "fill");
-            if (wide_fill) wide_on = 1;
-            else if (sscanf(argv[i], "%d:%d", &a, &b) == 2 && a > 0 && b > 0) { wide_ratio = (double)a / b; wide_on = 1; }
-            else wide_on = 0;
-        }
-        else if (!strcmp(argv[i], "--split") && i + 1 < argc) {
-            i++;
-            if (!strcmp(argv[i], "side")) split_side = 1;
-            else if (!strcmp(argv[i], "stack")) split_side = 0;
-            else { fprintf(stderr, "--split: side or stack\n"); return 1; }
-        }
-        else if (!strcmp(argv[i], "--aspect") && i + 1 < argc) {
-            i++;
-            if (!strcmp(argv[i], "keep")) aspect_mode = 0;
-            else if (!strcmp(argv[i], "stretch")) aspect_mode = 1;
-            else if (!strcmp(argv[i], "crop")) aspect_mode = 2;
-            else { fprintf(stderr, "--aspect: keep, stretch or crop\n"); return 1; }
-        }
-        else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) { game_name = NULL; break; }
-        else if (argv[i][0] != '-') game_name = argv[i];
-        else { fprintf(stderr, "unknown option %s\n", argv[i]); return 1; }
-    }
-    if (!game_name) {
-        int n;
-        const m2_game *list = m2_game_list(&n);
-        fprintf(stderr, "usage: m2emu [-r romdir] [-n nvdir] [--vsync] [--fullscreen] [--size WxH]\n"
-                        "             [--widescreen 16:9|16:10|fill|off] [--scale N|auto] [--sharp]\n"
-                        "             [--mesh blend|checker] [--saturation S] [--gamma G | --gamma R,G,B]\n"
-                        "             [--shifter sequential|hpattern] [--hold-gears] [--pipeline on|off]\n"
-                        "             [--aspect keep|stretch|crop] [--coop [--split side|stack]] <game>\n"
-                        "keys: Esc quit, F3 reset, P pause, Tab fast forward, F7 saturation, F8 mesh,\n"
-                        "      F9 widescreen, F10 scale, F11 fullscreen. Full guide: port/README.md\n"
-                        "games:");
-        for (int i = 0; i < n; i++)
-            fprintf(stderr, " %s", list[i].name);
-        fprintf(stderr, "\n");
-        return 1;
-    }
-    if (!nvdir[0]) {
-#ifdef _WIN32   /* next to the program, as the original's NVDATA folder */
-        char *base = SDL_GetBasePath();
-        snprintf(nvdir, sizeof nvdir, "%sNVDATA", base ? base : "");
-        SDL_free(base);
-#else
-        const char *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
-        if (xdg) snprintf(nvdir, sizeof nvdir, "%s/m2emu/NVDATA", xdg);
-        else snprintf(nvdir, sizeof nvdir, "%s/.local/share/m2emu/NVDATA", home ? home : ".");
-#endif
-    }
-
+    memset(pl, 0, sizeof pl);
+    first_log[0] = 0;
     const m2_game *game = m2_find_game(game_name);
-    if (!game) { fprintf(stderr, "unknown game %s\n", game_name); return 1; }
+    if (!game) FAIL("Unknown game %s", game_name);
     const char *dirs[] = { romdir, NULL };
-    if (coop && strncmp(game->name, "daytona", 7)) {
-        fprintf(stderr, "--coop: only Daytona USA for now\n");
-        return 1;
-    }
+    if (coop && strncmp(game->name, "daytona", 7))
+        FAIL("Linked play (--coop): only Daytona USA for now");
     nplayers = coop ? 2 : 1;
     if (coop && !split_side && !wide_set)   /* one above the other: wide views fill each half */
         wide_on = wide_fill = 1;
-    mkdirs(nvdir);
+    m2opt_mkdirs(nvdir);
     for (int c = 0; c < 3; c++)
         if (gamma[c] <= 0) gamma[c] = 1.0f;
 
@@ -303,7 +249,10 @@ int main(int argc, char **argv)
         p->tg = malloc(sizeof *p->tg);
         p->pipe = m2pipe_create();
         p->geo = m2geo_create();
-        if (!p->b || !p->tg || !p->pipe || !p->geo) { fprintf(stderr, "out of memory\n"); return 1; }
+        if (!p->b)
+            FAIL("%s: the ROM files can't be loaded from %.400s%s%s", game->title, romdir,
+                 first_log[0] ? "\n" : "", first_log);
+        if (!p->tg || !p->pipe || !p->geo) FAIL("Out of memory");
         /* linked boards keep their own save data (settings differ) */
         if (coop) snprintf(p->nvpath, sizeof p->nvpath, "%s/%s-coop%d.DAT", nvdir, game->name, i + 1);
         else snprintf(p->nvpath, sizeof p->nvpath, "%s/%s.DAT", nvdir, game->name);
@@ -334,51 +283,27 @@ int main(int argc, char **argv)
         p->in.hold_gears = hold_gears;
         m2input_init(&p->in);
     }
-    m2_net *net = NULL;
     if (coop) {   /* the two boards' network boards, linked in a ring */
         m2_board *ring[MAX_PLAYERS] = { pl[0].b, pl[1].b };
         net = m2net_create(ring, nplayers);
-        if (!net) { fprintf(stderr, "out of memory\n"); return 1; }
+        if (!net) FAIL("Out of memory");
     }
 
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) < 0) {
-        fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
-        return 1;
-    }
-    if (USE_GLES) {
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-    } else {   /* 2.1, compatibility profile: luminance textures, GLSL 1.20 */
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-    }
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     char title[256];
     snprintf(title, sizeof title, "%s - Model 2", game->title);
-    if (win_w <= 0 || win_h <= 0) {
-        win_h = 768;
-        if (coop && !split_side)
-            win_w = 1365;   /* 16:9, each player 32:9 */
-        else
-            win_w = (int)(win_h * (wide_on && !wide_fill ? wide_ratio : 4.0 / 3.0) + 0.5) * nplayers;
-    }
-    SDL_Window *win = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_w, win_h,
-                                       SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE |
-                                       (fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
-    if (!win) { fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError()); return 1; }
-    SDL_GLContext ctx = SDL_GL_CreateContext(win);
-    if (!ctx) { fprintf(stderr, "%s context: %s\n", USE_GLES ? "OpenGL ES 2" : "OpenGL 2.1", SDL_GetError()); return 1; }
-    const char *missing = NULL;
-    if (!m2glapi_load(SDL_GL_GetProcAddress, &missing)) {
-        fprintf(stderr, "OpenGL: %s not available\n", missing);
-        return 1;
+    SDL_SetWindowTitle(win, title);
+    if (from_gui) {   /* the launcher's window becomes the game's */
+        int ww, wh;
+        game_window_size(o, &ww, &wh);
+        SDL_SetWindowFullscreen(win, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+        if (!fullscreen) {
+            SDL_SetWindowSize(win, ww, wh);
+            SDL_SetWindowPosition(win, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+        }
     }
     SDL_GL_SetSwapInterval(vsync);
     for (int i = 0; i < nplayers; i++)
-        if (!(pl[i].gl = m2gl_create(USE_GLES))) return 1;
+        if (!(pl[i].gl = m2gl_create(USE_GLES))) FAIL("OpenGL: the renderer can't start");
 
     SDL_AudioDeviceID audio = 0;
     if (pl[0].snd) {
@@ -397,19 +322,13 @@ int main(int argc, char **argv)
             SDL_PauseAudioDevice(audio, 0);
     }
 
-    /* extra pad mappings (SDL_GameControllerDB format), if present */
-    {
-        char dbpath[1200];
-        const char *base = SDL_GetBasePath();
-        snprintf(dbpath, sizeof dbpath, "%sgamecontrollerdb.txt", base ? base : "");
-        if (SDL_GameControllerAddMappingsFromFile(dbpath) > 0)
-            printf("pad mappings loaded from %s\n", dbpath);
-        for (int j = 0; j < SDL_NumJoysticks(); j++)
-            if (!SDL_IsGameController(j))
-                printf("joystick %d (%s) has no pad mapping; add it to gamecontrollerdb.txt\n",
-                       j, SDL_JoystickNameForIndex(j));
-    }
+    /* the pads already connected (their "added" events may have gone to the launcher) */
     SDL_GameController *pads[2] = { NULL, NULL };
+    for (int j = 0, p = 0; j < SDL_NumJoysticks() && p < 2; j++)
+        if (SDL_IsGameController(j) && (pads[p] = SDL_GameControllerOpen(j))) {
+            printf("pad %d: %s\n", p + 1, SDL_GameControllerName(pads[p]));
+            p++;
+        }
     /* host controls as they arrive; handed to the players before each frame
        (--coop: keyboard and pad 1 drive player 1, pad 2 player 2) */
     m2_input_state raw;
@@ -437,7 +356,15 @@ int main(int argc, char **argv)
         p->go = SDL_CreateSemaphore(0);
         p->done = SDL_CreateSemaphore(0);
         p->thread = p->go && p->done ? SDL_CreateThread(emu_thread, "m2 board", p) : NULL;
-        if (!p->thread) { fprintf(stderr, "emulation thread: %s\n", SDL_GetError()); return 1; }
+        if (!p->thread) {   /* stop the ones already running */
+            for (int k = 0; k < i; k++) {
+                pl[k].quit = 1;
+                SDL_SemPost(pl[k].go);
+                SDL_WaitThread(pl[k].thread, NULL);
+                pl[k].thread = NULL;
+            }
+            FAIL("Can't start the emulation thread: %s", SDL_GetError());
+        }
     }
     int in_flight = 0, want_reset = 0;
 
@@ -453,13 +380,17 @@ int main(int argc, char **argv)
             switch (e.type) {
             case SDL_QUIT:
                 running = 0;
+                quit_app = 1;
                 break;
             case SDL_KEYDOWN:
             case SDL_KEYUP: {
                 int down = e.type == SDL_KEYDOWN;
                 SDL_Scancode sc = e.key.keysym.scancode;
                 if (down && !e.key.repeat) {
-                    if (sc == SDL_SCANCODE_ESCAPE) running = 0;
+                    if (sc == SDL_SCANCODE_ESCAPE) {   /* back to the launcher, or quit */
+                        running = 0;
+                        quit_app = !from_gui;
+                    }
                     else if (sc == SDL_SCANCODE_P) {
                         paused = !paused;
                         if (audio) SDL_PauseAudioDevice(audio, paused);
@@ -479,8 +410,13 @@ int main(int argc, char **argv)
                 if (dik) raw.key[dik] = (uint8_t)down;
                 break;
             }
-            case SDL_CONTROLLERDEVICEADDED:
+            case SDL_CONTROLLERDEVICEADDED: {
+                int open = 0;   /* already opened above */
                 for (int p = 0; p < 2; p++)
+                    if (pads[p] && SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pads[p])) ==
+                                   SDL_JoystickGetDeviceInstanceID(e.cdevice.which))
+                        open = 1;
+                for (int p = 0; p < 2 && !open; p++)
                     if (!pads[p]) {
                         pads[p] = SDL_GameControllerOpen(e.cdevice.which);
                         if (pads[p])
@@ -488,6 +424,7 @@ int main(int argc, char **argv)
                         break;
                     }
                 break;
+            }
             case SDL_CONTROLLERDEVICEREMOVED:
                 for (int p = 0; p < 2; p++)
                     if (pads[p] && SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pads[p])) == e.cdevice.which) {
@@ -692,7 +629,7 @@ int main(int argc, char **argv)
         /* pace to the game's refresh rate */
         double now = SDL_GetPerformanceCounter() / freq;
         next += frame_s;
-        if (fast || bench || next < now - 0.1)
+        if (fast || bench || !frame_cap || next < now - 0.1)
             next = now;
         else if (next > now)
             SDL_Delay((Uint32)((next - now) * 1000.0));
@@ -736,10 +673,152 @@ int main(int argc, char **argv)
         free(p->tg);
     }
     m2net_destroy(net);
+    for (int i = 0; i < nplayers; i++)
+        m2_destroy(pl[i].b);
+    for (int p = 0; p < 2; p++)
+        if (pads[p])
+            SDL_GameControllerClose(pads[p]);
+    memset(pl, 0, sizeof pl);
+    return quit_app;
+
+fail:
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        player *p = &pl[i];
+        if (p->go) SDL_DestroySemaphore(p->go);
+        if (p->done) SDL_DestroySemaphore(p->done);
+        m2pipe_destroy(p->pipe);
+        m2snd_destroy(p->snd);
+        m2gl_destroy(p->gl);
+        m2geo_destroy(p->geo);
+        free(p->tg);
+        m2_destroy(p->b);
+    }
+    m2net_destroy(net);
+    memset(pl, 0, sizeof pl);
+    return -1;
+#undef FAIL
+}
+
+static void usage(void)
+{
+    int n;
+    const m2_game *list = m2_game_list(&n);
+    fprintf(stderr, "usage: m2emu                      the launcher (games and settings)\n"
+                    "       m2emu --no-gui [options] <game>\n"
+                    "options: [-r romdir] [-n nvdir] [--vsync] [--no-frame-cap] [--fullscreen] [--size WxH]\n"
+                    "         [--widescreen 16:9|16:10|fill|off] [--scale N|auto] [--sharp]\n"
+                    "         [--mesh blend|checker] [--saturation S] [--gamma G | --gamma R,G,B]\n"
+                    "         [--shifter sequential|hpattern] [--hold-gears] [--pipeline on|off]\n"
+                    "         [--aspect keep|stretch|crop] [--coop [--split side|stack]]\n"
+                    "keys: Esc quit (with the launcher: back to it), F3 reset, P pause, Tab fast forward,\n"
+                    "      F7 saturation, F8 mesh, F9 widescreen, F10 scale, F11 fullscreen.\n"
+                    "Full guide: port/README.md\n"
+                    "games:");
+    for (int i = 0; i < n; i++)
+        fprintf(stderr, " %s", list[i].name);
+    fprintf(stderr, "\n");
+}
+
+int main(int argc, char **argv)
+{
+    m2_options o;
+    const char *game_name = NULL;
+    int no_gui = 0, help = 0;
+    char cfg[1024], last[64] = "";
+
+    /* --no-gui: the command line alone. Otherwise the launcher, with the
+       settings it keeps in m2emu.ini (a game named on the command line is
+       selected in it). */
+    m2opt_defaults(&o);
+    if (m2opt_parse(&o, argc, argv, &game_name, &no_gui, &help))
+        return 1;
+    if (help || (no_gui && !game_name)) {
+        usage();
+        return help ? 0 : 1;
+    }
+    m2opt_config_path(cfg, sizeof cfg);
+    if (!no_gui) {
+        m2opt_defaults(&o);
+        m2opt_load(&o, cfg, last, sizeof last);
+    }
+    if (game_name && !m2_find_game(game_name)) {
+        fprintf(stderr, "unknown game %s (m2emu --help lists them)\n", game_name);
+        return 1;
+    }
+
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) < 0) {
+        fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
+        return 1;
+    }
+    if (USE_GLES) {
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+    } else {   /* 2.1, compatibility profile: luminance textures, GLSL 1.20 */
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+    }
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+
+    const int launcher_w = 1280, launcher_h = 800;
+    int win_w = launcher_w, win_h = launcher_h;
+    if (no_gui)
+        game_window_size(&o, &win_w, &win_h);
+    SDL_Window *win = SDL_CreateWindow("Model 2 Emulator", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                                       win_w, win_h, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE |
+                                       (no_gui && o.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
+    if (!win) { fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError()); return 1; }
+    SDL_GLContext ctx = SDL_GL_CreateContext(win);
+    if (!ctx) { fprintf(stderr, "%s context: %s\n", USE_GLES ? "OpenGL ES 2" : "OpenGL 2.1", SDL_GetError()); return 1; }
+    const char *missing = NULL;
+    if (!m2glapi_load(SDL_GL_GetProcAddress, &missing)) {
+        fprintf(stderr, "OpenGL: %s not available\n", missing);
+        return 1;
+    }
+
+    /* extra pad mappings (SDL_GameControllerDB format), if present */
+    {
+        char dbpath[1200];
+        char *base = SDL_GetBasePath();
+        snprintf(dbpath, sizeof dbpath, "%sgamecontrollerdb.txt", base ? base : "");
+        SDL_free(base);
+        if (SDL_GameControllerAddMappingsFromFile(dbpath) > 0)
+            printf("pad mappings loaded from %s\n", dbpath);
+        for (int j = 0; j < SDL_NumJoysticks(); j++)
+            if (!SDL_IsGameController(j))
+                printf("joystick %d (%s) has no pad mapping; add it to gamecontrollerdb.txt\n",
+                       j, SDL_JoystickNameForIndex(j));
+    }
+
+    char err[1024] = "";
+    int status = 0;
+    if (no_gui) {
+        if (run_game(win, &o, game_name, 0, err, sizeof err) < 0) {
+            fprintf(stderr, "%s\n", err);
+            status = 1;
+        }
+    } else if (m2launch_init(win, ctx, USE_GLES)) {
+        fprintf(stderr, "the launcher can't start (use --no-gui)\n");
+        status = 1;
+    } else {
+        char game[64];
+        snprintf(game, sizeof game, "%s", game_name ? game_name : last);
+        const char *msg = NULL;
+        while (m2launch_run(win, &o, cfg, game, sizeof game, msg)) {
+            int r = run_game(win, &o, game, 1, err, sizeof err);
+            SDL_SetWindowFullscreen(win, 0);   /* back to the launcher's window */
+            SDL_SetWindowSize(win, launcher_w, launcher_h);
+            SDL_SetWindowPosition(win, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+            if (r > 0)
+                break;
+            msg = r < 0 ? err : NULL;
+        }
+        m2launch_shutdown();
+    }
     SDL_GL_DeleteContext(ctx);
     SDL_DestroyWindow(win);
     SDL_Quit();
-    for (int i = 0; i < nplayers; i++)
-        m2_destroy(pl[i].b);
-    return 0;
+    return status;
 }

@@ -47,15 +47,30 @@ OBJ = $(addprefix $(BUILD)/,$(CORE_C:.c=.o) $(M68K_C:.c=.o) $(CORE_CXX:.cpp=.o))
 
 all: $(BUILD)/m2emu$(EXE) $(BUILD)/m2run$(EXE)
 
-$(BUILD)/m2emu$(EXE): $(BUILD)/sdl/m2emu.o $(BUILD)/m2/m2gl.o $(BUILD)/m2/m2glapi.o $(OBJ)
+# the launcher: Dear ImGui (port/imgui, MIT) on SDL2 and our GL layer
+IMGUI_CXX := imgui/imgui.cpp imgui/imgui_draw.cpp imgui/imgui_tables.cpp imgui/imgui_widgets.cpp \
+             imgui/backends/imgui_impl_sdl2.cpp
+GUI_OBJ = $(addprefix $(BUILD)/,sdl/launcher.o sdl/imgui_impl_m2gl.o $(IMGUI_CXX:.cpp=.o) \
+            sdl/options.o sdl/dirlist.o)
+
+$(BUILD)/m2emu$(EXE): $(BUILD)/sdl/m2emu.o $(BUILD)/m2/m2gl.o $(BUILD)/m2/m2glapi.o $(GUI_OBJ) $(OBJ)
 	$(CXX) $(LDFLAGS) -o $@ $^ $(SDL_LIBS) $(ZLIB_LIBS) -lm
 
 $(BUILD)/m2run$(EXE): $(BUILD)/m2/m2run.o $(BUILD)/m2/m2tiledump.o $(OBJ)
 	$(CXX) $(LDFLAGS) -o $@ $^ $(ZLIB_LIBS) -lm
 
-$(BUILD)/sdl/m2emu.o: sdl/m2emu.c
+$(BUILD)/sdl/%.o: sdl/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(GL_CFLAGS) $(SDL_CFLAGS) -c -o $@ $<
+
+$(BUILD)/sdl/%.o: sdl/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -Iimgui $(SDL_CFLAGS) -c -o $@ $<
+
+# Dear ImGui (third party): its own warnings are not ours
+$(BUILD)/imgui/%.o: imgui/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -Iimgui $(SDL_CFLAGS) -w -c -o $@ $<
 
 # Musashi and ymfm (third party): their own warnings are not ours
 $(BUILD)/m68k/%.o: m68k/%.c
@@ -85,7 +100,7 @@ windows:
 	@test -n "$(SDL2)" || { echo "set SDL2=<SDL2 MinGW development package>/x86_64-w64-mingw32"; exit 1; }
 	@test -n "$(ZLIB)" || { echo "set ZLIB=<directory with include/zlib.h and lib/libz.a>"; exit 1; }
 	$(MAKE) BUILD=build-windows EXE=.exe CC=$(MINGW)gcc CXX=$(MINGW)g++ \
-		SDL_CFLAGS="-I$(SDL2)/include" SDL_LIBS="-L$(SDL2)/lib -lmingw32 -lSDL2main -lSDL2 -mwindows" \
+		SDL_CFLAGS="-I$(SDL2)/include -I$(SDL2)/include/SDL2" SDL_LIBS="-L$(SDL2)/lib -lmingw32 -lSDL2main -lSDL2 -mwindows" \
 		ZLIB_CFLAGS="-I$(ZLIB)/include" ZLIB_LIBS="$(ZLIB)/lib/libz.a" \
 		LDFLAGS="-static-libgcc -static-libstdc++" \
 		build-windows/m2emu.exe build-windows/m2run.exe

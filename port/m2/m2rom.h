@@ -77,6 +77,9 @@ const m2_game *m2_game_list(int *count);
 
 /* Loads all ROMs of `game` from the zip files in `dirs` (NULL-terminated).
    Missing or bad files are reported through `log`. Returns 0 on success. */
+/* How many of the game's ROM files can't be found (0: the set is complete);
+   *total gets the number of files. Only looks, reads nothing. */
+int  m2_check_roms(const m2_game *game, const char *const *dirs, int *total);
 int  m2_load_roms(const m2_game *game, const char *const *dirs, m2_regions *out,
                   void (*log)(const char *msg));
 void m2_free_roms(m2_regions *r);
