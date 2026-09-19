@@ -1,5 +1,7 @@
 # Sega Model 2 Emulator 1.1a (ElSemi) - Ghidra decompilation
 
+```Note: This repository contains reverse-engineered C code and build tools. It does not contain any game ROMs, arcade board BIOS files, or Sega-owned assets. You must legally provide your own dumps (e.g., MAME-compatible daytona.zip) to use this software.```
+
 A decompilation of ElSemi's Model 2 Emulator and a portable C port of it
 (`port/`), aimed at Linux x86 PCs and at an Android TV box with an
 Allwinner H3 (32-bit ARM Cortex-A7, Mali-400 GPU).
@@ -82,3 +84,6 @@ its own `QUIRKS.md` (`port/i960`, `port/tgp`, `port/m2`, `port/snd`).
 Raw decompiler output, **not compilable**: `gcc -m32 -fsyntax-only` reports ~16k errors
 (undeclared globals, unknown prototypes, MSVC ABI artefacts like `in_ECX` thiscall params).
 Platform layer is Direct3D 9 + D3DX9 (HLSL pixel shaders), DirectInput 8, XInput, Winsock, Win32 GUI.
+
+## License
+TODO, in the meantime, DON'T SELL THE CODE (Sega don't sue me plz)
