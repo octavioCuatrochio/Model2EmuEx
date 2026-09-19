@@ -1,12 +1,12 @@
 # Sega Model 2 Emulator 1.1a (ElSemi) - Ghidra decompilation
 
 A decompilation of ElSemi's Model 2 Emulator and a portable C port of it
-(`port/`), aimed at Linux x86 PCs and at an Android TV box with an
+(`port/`), aimed at Linux and Windows PCs and at an Android TV box with an
 Allwinner H3 (32-bit ARM Cortex-A7, Mali-400 GPU).
 
 ## Branches
 - `master`: the decompilation and the portable port, everything on one thread.
-- `optimized`: the same port, faster: sound, emulation and drawing on separate threads, and less work per frame, with the same pictures and sound.
+- `optimized`: the same port, faster (sound, emulation and drawing on separate threads, less work per frame, same pictures and sound), and building for Windows and desktop OpenGL too.
 - `coop`: `optimized` plus two-player linked play of Daytona USA in one window (`--coop`, split screen).
 
 ## Games known to work
@@ -15,7 +15,8 @@ Allwinner H3 (32-bit ARM Cortex-A7, Mali-400 GPU).
 - The other games in the list may boot but haven't been tried.
 
 ## Platforms
-- Linux x86 (SDL2, OpenGL ES 2 through Mesa): builds and runs; everything above was tested here.
+- Linux x86 (SDL2; desktop OpenGL, or OpenGL ES 2 with `make GL=gles`): builds and runs; everything above was tested here.
+- Windows x86-64 (MinGW-w64: MSYS2 or cross-compiled; desktop OpenGL): builds; tested under Wine, where the emulation, sound and pictures match Linux. Not yet tried on a real Windows PC.
 - Android on the Allwinner H3: the target, untested yet. The headless tool `m2run` builds for it with the NDK (`make android`, `optimized` and `coop` branches); there is no Android frontend yet.
 
 ## Run example
@@ -27,7 +28,9 @@ Daytona USA in a 1920x1080 window with the colour saturation at 1.5, ROMs
     build/m2emu -r ~/Desktop/ROMs --size 1920x1080 --saturation 1.5 daytona
 
 Add `--fullscreen` to use the whole screen at its own resolution (1080p on
-a 1080p display). All options and controls: `port/README.md`.
+a 1080p display). On Windows the program is `build\m2emu.exe` (building:
+`port/README.md`, "Windows"). Two players linked: add `--coop`. All options
+and controls: `port/README.md`.
 
 Input: `../M2emulator_1.1a/EMULATOR.EXE` (PE32, MSVC, not packed, no PDB).
 `emulator_multicpu.exe` differs by 6 bytes (PE checksum + one constant), so it is not decompiled separately.
