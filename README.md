@@ -1,13 +1,20 @@
 # Sega Model 2 Emulator 1.1a (ElSemi) - Ghidra decompilation
 
+```Note: This repository contains reverse-engineered C code and build tools. It does not contain any game ROMs, arcade board BIOS files, or Sega-owned assets. You must legally provide your own dumps (e.g., MAME-compatible daytona.zip) to use this software.```
+
 A decompilation of ElSemi's Model 2 Emulator and a portable C port of it
-(`port/`), aimed at Linux and Windows PCs and at an Android TV box with an
+(`port/`), aimed at Linux x86 PCs and at an Android TV box with an
 Allwinner H3 (32-bit ARM Cortex-A7, Mali-400 GPU).
+
+<img width="1366" height="768" alt="Screenshot_20260918_221010" src="https://github.com/user-attachments/assets/bb57f231-c3cc-43d4-832c-a2804bb6007a" />
+
+<img width="1366" height="768" alt="Screenshot_20260918_221818" src="https://github.com/user-attachments/assets/a0b4b538-d89e-41be-a5fc-1698edfd7e23" />
+
 
 ## Branches
 - `master`: the decompilation and the portable port, everything on one thread.
-- `optimized`: the same port, faster (sound, emulation and drawing on separate threads, less work per frame, same pictures and sound), and building for Windows and desktop OpenGL too.
-- `coop`: `optimized` plus two-player linked play of Daytona USA in one window (`--coop`, split screen), and a launcher window (Games and Configuration tabs).
+- `optimized`: the same port, faster: sound, emulation and drawing on separate threads, and less work per frame, with the same pictures and sound.
+- `coop`: `optimized` plus two-player linked play of Daytona USA in one window (`--coop`, split screen).
 
 ## Games known to work
 - Daytona USA (`daytona`): played through races, with sound, controls and gears.
@@ -15,27 +22,19 @@ Allwinner H3 (32-bit ARM Cortex-A7, Mali-400 GPU).
 - The other games in the list may boot but haven't been tried.
 
 ## Platforms
-- Linux x86 (SDL2; desktop OpenGL, or OpenGL ES 2 with `make GL=gles`): builds and runs; everything above was tested here.
-- Windows x86-64 (MinGW-w64: MSYS2 or cross-compiled; desktop OpenGL): builds; tested under Wine, where the emulation, sound and pictures match Linux. Not yet tried on a real Windows PC.
+- Linux x86 (SDL2, OpenGL ES 2 through Mesa): builds and runs; everything above was tested here.
 - Android on the Allwinner H3: the target, untested yet. The headless tool `m2run` builds for it with the NDK (`make android`, `optimized` and `coop` branches); there is no Android frontend yet.
 
 ## Run example
+Daytona USA in a 1920x1080 window with the colour saturation at 1.5, ROMs
+(MAME-style `daytona.zip`) in `~/Desktop/ROMs`:
+
     cd port
     make
-    build/m2emu
-
-opens the launcher: choose the ROM folder in the Games tab, set the options
-in the Configuration tab, and play.
-
-Straight from the command line, Daytona USA in a 1920x1080 window with the
-colour saturation at 1.5, ROMs (MAME-style `daytona.zip`) in `~/Desktop/ROMs`:
-
-    build/m2emu --no-gui -r ~/Desktop/ROMs --size 1920x1080 --saturation 1.5 daytona
+    build/m2emu -r ~/Desktop/ROMs --size 1920x1080 --saturation 1.5 daytona
 
 Add `--fullscreen` to use the whole screen at its own resolution (1080p on
-a 1080p display). On Windows the program is `build\m2emu.exe` (building:
-`port/README.md`, "Windows"). Two players linked: add `--coop`. All options
-and controls: `port/README.md`.
+a 1080p display). All options and controls: `port/README.md`.
 
 Input: `../M2emulator_1.1a/EMULATOR.EXE` (PE32, MSVC, not packed, no PDB).
 `emulator_multicpu.exe` differs by 6 bytes (PE checksum + one constant), so it is not decompiled separately.
@@ -65,10 +64,7 @@ Tool: Ghidra 12.1.3 (`~/.local/opt/ghidra_12.1.3_PUBLIC`), headless auto-analysi
 
 ## The port
 `port/` is a portable C rewrite that runs Daytona USA, Virtua Fighter 2 and
-Sega Rally with video, sound and input (SDL2 + OpenGL, or OpenGL ES 2 with
-`make GL=gles`), on Linux and Windows. The machine, the drawing and the
-sound run on separate threads. `--coop` runs two linked Daytona USA
-machines in one window for two players (split screen). **Start with
+Sega Rally with video, sound and input (SDL2 + OpenGL ES 2). **Start with
 `port/README.md`**: build, options, controls, save data and debugging.
 Each subsystem documents the original's bugs and the port's differences in
 its own `QUIRKS.md` (`port/i960`, `port/tgp`, `port/m2`, `port/snd`).
@@ -88,3 +84,6 @@ its own `QUIRKS.md` (`port/i960`, `port/tgp`, `port/m2`, `port/snd`).
 Raw decompiler output, **not compilable**: `gcc -m32 -fsyntax-only` reports ~16k errors
 (undeclared globals, unknown prototypes, MSVC ABI artefacts like `in_ECX` thiscall params).
 Platform layer is Direct3D 9 + D3DX9 (HLSL pixel shaders), DirectInput 8, XInput, Winsock, Win32 GUI.
+
+## License
+TODO, in the meantime, DON'T SELL THE CODE (Sega don't sue me plz)
