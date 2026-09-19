@@ -8,12 +8,23 @@ haven't been tested.
 
 ## Building
 
-Needs a C99 and C++14 compiler, SDL2, OpenGL ES 2 headers/libraries (Mesa's
+Needs a C11 and C++14 compiler, SDL2, OpenGL ES 2 headers/libraries (Mesa's
 `libGLESv2`) and zlib.
 
     cd port
     make            # build/m2emu (the emulator), build/m2run (headless tool)
     make clean
+
+For timing on an Android device (32-bit ARM, tuned for the Cortex-A7), the
+headless tool alone can be built with the Android NDK:
+
+    make android NDK=~/Android/Sdk/ndk/<version>    # build-android/m2run
+    adb push build-android/m2run /data/local/tmp/
+    adb shell 'cd /data/local/tmp && M2_BENCH=1 ./m2run daytona 3000 /sdcard/roms'
+
+`CFLAGS`, `CXXFLAGS` and `LDFLAGS` can be given in the environment (for
+example `CFLAGS="-O1 -g -fsanitize=thread" LDFLAGS=-fsanitize=thread
+make BUILD=build-tsan`).
 
 ## Running
 
@@ -149,6 +160,37 @@ over. With no file, Daytona starts with its link setting on "single"
 | `M2EMU_KEYS=frame:key:frames,...` | m2emu | press keys by script (`key` = DirectInput code in hex, e.g. `06` coin, `02` start, `c8` up) |
 | `M2EMU_BENCH=N` | m2emu | run N frames unthrottled and print a timing split |
 | `M2EMU_ACTIONS=iter:a,...` | m2emu | frontend actions by main-loop iteration: `p` pause/unpause, `r` reset (F3), `q` quit |
+
+## Performance and threads
+
+`m2emu` spreads the work over three threads:
+
+| Thread | Work |
+|--------|------|
+| main | window, input, tile layers, 3D geometrizer, OpenGL drawing |
+| board | the i960 and the TGP, one frame ahead of the drawing (`m2/m2pipe.c` hands frames over) |
+| audio (SDL's) | the sound board: 68000 and sound chips, at the audio device's pace |
+
+- `--pipeline on` (default): frame N is drawn while frame N + 1 runs, so a
+  frame costs the slower of the two instead of their sum, for one frame
+  (about 17 ms) more input latency. `--pipeline off` emulates and draws each
+  frame in turn on the main thread.
+- The game's sound commands reach the sound board through a lock-free
+  queue. When the emulation can't keep full speed, music and effects keep
+  their tempo.
+- Other savings, all with the same output: tile layers kept as palette
+  indices (colours looked up on the GPU) and uploaded only when they
+  change; a radix sort and fast paths in the geometrizer; 32-byte indexed
+  vertices; the hand-over copies only the memory pages written in a frame.
+
+To check that a change leaves the output alone, compare two builds:
+
+| What | How |
+|------|-----|
+| 3D and tile output | `M2_GEOHASH=1 build/m2run <game> 3000 <romdir>`: the checksums must match (also with `M2_PIPE=1`, which goes through the hand-over, and `M2_RESET_AT`) |
+| sound | `M2_WAV=out.wav build/m2run ...`: the files must be byte-identical |
+| the picture | `M2EMU_SHOT=file.ppm:frame build/m2emu ...` with a fresh `-n` directory: `cmp` the files |
+| speed | `M2EMU_BENCH=N` (frontend) and `M2_BENCH=1` (m2run) print a per-part timing split |
 
 ## Headless tool: m2run
 

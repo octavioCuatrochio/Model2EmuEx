@@ -28,7 +28,8 @@ Tool: Ghidra 12.1.3 (`~/.local/opt/ghidra_12.1.3_PUBLIC`), headless auto-analysi
 
 ## The port
 `port/` is a portable C rewrite that runs Daytona USA, Virtua Fighter 2 and
-Sega Rally with video, sound and input (SDL2 + OpenGL ES 2). **Start with
+Sega Rally with video, sound and input (SDL2 + OpenGL ES 2). The machine,
+the drawing and the sound run on separate threads. **Start with
 `port/README.md`**: build, options, controls, save data and debugging.
 Each subsystem documents the original's bugs and the port's differences in
 its own `QUIRKS.md` (`port/i960`, `port/tgp`, `port/m2`, `port/snd`).
