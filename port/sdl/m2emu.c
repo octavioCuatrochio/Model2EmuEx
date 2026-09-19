@@ -22,13 +22,28 @@
 #include "../m2/m2wide.h"
 #include "../snd/m2snd.h"
 
+#include "../m2/m2glapi.h"
+
 #include <SDL2/SDL.h>
-#include <GLES2/gl2.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#define make_dir(p) _mkdir(p)
+#else
+#define make_dir(p) mkdir((p), 0755)
+#endif
+
+/* The GL flavour this build asks for: desktop OpenGL 2.1 or later
+   (default), or OpenGL ES 2 with `make GL=gles` (M2_GLES). */
+#ifdef M2_GLES
+#define USE_GLES 1
+#else
+#define USE_GLES 0
+#endif
 
 static m2_tilegen tilegen;
 static m2_gl *gl;
@@ -124,12 +139,13 @@ static void mkdirs(const char *path)
     char tmp[1024];
     snprintf(tmp, sizeof tmp, "%s", path);
     for (char *p = tmp + 1; *p; p++)
-        if (*p == '/') {
+        if (*p == '/' || *p == '\\') {
+            char c = *p;
             *p = 0;
-            mkdir(tmp, 0755);
-            *p = '/';
+            make_dir(tmp);
+            *p = c;
         }
-    mkdir(tmp, 0755);
+    make_dir(tmp);
 }
 
 int main(int argc, char **argv)
@@ -186,9 +202,15 @@ int main(int argc, char **argv)
         return 1;
     }
     if (!nvdir[0]) {
+#ifdef _WIN32   /* next to the program, as the original's NVDATA folder */
+        char *base = SDL_GetBasePath();
+        snprintf(nvdir, sizeof nvdir, "%sNVDATA", base ? base : "");
+        SDL_free(base);
+#else
         const char *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
         if (xdg) snprintf(nvdir, sizeof nvdir, "%s/m2emu/NVDATA", xdg);
         else snprintf(nvdir, sizeof nvdir, "%s/.local/share/m2emu/NVDATA", home ? home : ".");
+#endif
     }
 
     const m2_game *game = m2_find_game(game_name);
@@ -225,9 +247,15 @@ int main(int argc, char **argv)
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
     }
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+    if (USE_GLES) {
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+    } else {   /* 2.1, compatibility profile: luminance textures, GLSL 1.20 */
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+    }
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     char title[256];
@@ -241,9 +269,14 @@ int main(int argc, char **argv)
                                        (fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
     if (!win) { fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError()); return 1; }
     SDL_GLContext ctx = SDL_GL_CreateContext(win);
-    if (!ctx) { fprintf(stderr, "GLES 2 context: %s\n", SDL_GetError()); return 1; }
+    if (!ctx) { fprintf(stderr, "%s context: %s\n", USE_GLES ? "OpenGL ES 2" : "OpenGL 2.1", SDL_GetError()); return 1; }
+    const char *missing = NULL;
+    if (!m2glapi_load(SDL_GL_GetProcAddress, &missing)) {
+        fprintf(stderr, "OpenGL: %s not available\n", missing);
+        return 1;
+    }
     SDL_GL_SetSwapInterval(vsync);
-    gl = m2gl_create();
+    gl = m2gl_create(USE_GLES);
     if (!gl) return 1;
 
     SDL_AudioDeviceID audio = 0;

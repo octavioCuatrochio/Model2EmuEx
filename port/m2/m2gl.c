@@ -1,4 +1,4 @@
-/* GLES2 renderer; see m2gl.h. Polygon colour pipeline as in the hardware
+/* OpenGL (ES) 2 renderer; see m2gl.h. Polygon colour pipeline as in the hardware
    (and the original's pixel shader, string at 0x51bd58):
      texel (4 bit) -> luma RAM[lumabase + texel*8] * polygon luma / 256
      -> colour translation RAM row of each channel of palette[0x1000 + colorbase]
@@ -7,7 +7,7 @@
 #include "m2gl.h"
 #include "m2board.h"
 
-#include <GLES2/gl2.h>
+#include "m2glapi.h"
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -63,7 +63,6 @@ static const char *tile_vs =
    it only high-priority ones. Everything stays in exact small integers, fine
    for mediump. */
 static const char *tile_fs =
-    "precision mediump float;\n"
     "uniform sampler2D tex;\n"
     "uniform sampler2D pal;\n"
     "uniform float hipass;\n"
@@ -79,7 +78,6 @@ static const char *tile_fs =
 
 /* final pass to the window: optional saturation boost (not in the original) */
 static const char *post_fs =
-    "precision mediump float;\n"
     "uniform sampler2D tex;\n"
     "uniform float sat;\n"
     "varying vec2 v_uv;\n"
@@ -113,7 +111,6 @@ static const char *poly_vs =
     "}\n";
 
 static const char *poly_fs =
-    "precision mediump float;\n"
     "uniform sampler2D atlas;\n"
     "uniform sampler2D lumat;\n"
     "uniform sampler2D colt;\n"
@@ -145,11 +142,19 @@ static const char *poly_fs =
     "    gl_FragColor = vec4(texture2D(colt, vec2(col, v_par.y)).rgb, alpha);\n"
     "}\n";
 
-static GLuint compile(GLenum type, const char *src)
+/* The shaders are GLSL ES 1.00 without a version line. OpenGL ES gets
+   mediump floats in fragment shaders (Mali-400 has no highp there; vertex
+   shaders keep their default highp); desktop OpenGL compiles them as GLSL
+   1.20, which has the same language but no precision qualifiers. */
+static GLuint compile(int es, GLenum type, const char *src)
 {
+    const char *head = !es ? "#version 120\n"
+                     : type == GL_FRAGMENT_SHADER ? "#version 100\nprecision mediump float;\n"
+                     : "#version 100\n";
+    const char *parts[2] = { head, src };
     GLuint s = glCreateShader(type);
     GLint ok;
-    glShaderSource(s, 1, &src, NULL);
+    glShaderSource(s, 2, parts, NULL);
     glCompileShader(s);
     glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
     if (!ok) {
@@ -160,12 +165,12 @@ static GLuint compile(GLenum type, const char *src)
     return s;
 }
 
-static GLuint program(const char *vs, const char *fs, const char *const *attrs, int nattrs)
+static GLuint program(int es, const char *vs, const char *fs, const char *const *attrs, int nattrs)
 {
     GLuint p = glCreateProgram();
     GLint ok;
-    glAttachShader(p, compile(GL_VERTEX_SHADER, vs));
-    glAttachShader(p, compile(GL_FRAGMENT_SHADER, fs));
+    glAttachShader(p, compile(es, GL_VERTEX_SHADER, vs));
+    glAttachShader(p, compile(es, GL_FRAGMENT_SHADER, fs));
     for (int i = 0; i < nattrs; i++)
         glBindAttribLocation(p, (GLuint)i, attrs[i]);
     glLinkProgram(p);
@@ -192,7 +197,7 @@ static GLuint texture(int w, int h, GLenum fmt, GLenum filter)
     return t;
 }
 
-m2_gl *m2gl_create(void)
+m2_gl *m2gl_create(int es)
 {
     static const char *tile_attrs[] = { "pos", "uv" };
     static const char *poly_attrs[] = { "pos", "uv", "par" };
@@ -203,9 +208,9 @@ m2_gl *m2gl_create(void)
     g->table = malloc(64 * 1024 * 4);
     g->pv = malloc(sizeof(pvtx) * BATCH_VERTS);
     g->idx = malloc(sizeof(uint16_t) * BATCH_INDEX);
-    g->tile_prog = program(tile_vs, tile_fs, tile_attrs, 2);
-    g->post_prog = program(tile_vs, post_fs, tile_attrs, 2);
-    g->poly_prog = program(poly_vs, poly_fs, poly_attrs, 3);
+    g->tile_prog = program(es, tile_vs, tile_fs, tile_attrs, 2);
+    g->post_prog = program(es, tile_vs, post_fs, tile_attrs, 2);
+    g->poly_prog = program(es, poly_vs, poly_fs, poly_attrs, 3);
     if (!g->scratch || !g->table || !g->pv || !g->idx || !g->tile_prog || !g->poly_prog || !g->post_prog) {
         m2gl_destroy(g);
         return NULL;

@@ -1,5 +1,6 @@
 /*
- * OpenGL ES 2.0 renderer for the Model 2 port (desktop Mesa and Mali-400).
+ * OpenGL renderer for the Model 2 port: the OpenGL ES 2.0 feature set, on
+ * desktop OpenGL 2.1+ (Windows, Linux) or OpenGL ES 2 (Android, Mali-400).
  * The GL context is created by the frontend. Draw order as in the original
  * (0x4cbae0): tile layers low pass, 3D polygons, tile layers high pass;
  * rendered at the native 496x384 and scaled to the window.
@@ -20,7 +21,9 @@ extern "C" {
 struct m2_board;
 typedef struct m2_gl m2_gl;
 
-m2_gl *m2gl_create(void);
+/* With the functions loaded (m2glapi_load) and a context current: an
+   OpenGL ES 2 context (es = 1) or desktop OpenGL 2.1 or later (es = 0). */
+m2_gl *m2gl_create(int es);
 void   m2gl_destroy(m2_gl *g);
 
 /* change notifications, from the board hooks */

@@ -1,19 +1,59 @@
 # Model 2 port — user guide
 
 A portable C port of ElSemi's Sega Model 2 Emulator 1.1a, run by an SDL2 +
-OpenGL ES 2 frontend (`m2emu`). The target games are Daytona USA
+OpenGL frontend (`m2emu`) on Linux and Windows. The target games are Daytona USA
 (`daytona`), Virtua Fighter 2 (`vf2`) and Sega Rally Championship
 (`srallyc`), with video, sound and input. Other games in the list may boot but
 haven't been tested.
 
 ## Building
 
-Needs a C11 and C++14 compiler, SDL2, OpenGL ES 2 headers/libraries (Mesa's
-`libGLESv2`) and zlib.
+Needs a C11 and C++14 compiler (GCC or Clang), SDL2 and zlib. OpenGL is
+loaded at run time, so no GL headers or libraries are needed to build.
 
+| Build | Graphics | Command |
+|-------|----------|---------|
+| default | desktop OpenGL 2.1 or later (Windows, Linux) | `make` |
+| OpenGL ES | OpenGL ES 2 (Android, Mali GPUs, single-board computers) | `make GL=gles` |
+
+Both run the same renderer; `GL=` only chooses the kind of GL context
+`m2emu` asks for and the shader dialect. Pictures are the same: desktop GL
+computes in full precision where GLES rounds to mediump, which changes a
+few pixels by 1–6 steps of 255.
+
+### Linux
+
+    sudo pacman -S sdl2 zlib          # or: apt install libsdl2-dev zlib1g-dev
     cd port
     make            # build/m2emu (the emulator), build/m2run (headless tool)
     make clean
+
+### Windows
+
+With MSYS2 (UCRT64 shell), natively:
+
+    pacman -S make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-SDL2 mingw-w64-ucrt-x86_64-zlib
+    cd port
+    make            # build/m2emu.exe, build/m2run.exe
+
+Copy `SDL2.dll` (and `zlib1.dll`, from `/ucrt64/bin`) next to the programs
+to run them outside the MSYS2 shell.
+
+Cross-compiled from Linux with MinGW-w64 (the distribution's
+`mingw-w64-gcc`, or the standalone llvm-mingw):
+
+    # SDL2: SDL2-devel-2.x-mingw.tar.gz from github.com/libsdl-org/SDL/releases
+    # zlib: from zlib.net, built with the same compiler:
+    #   make -f win32/Makefile.gcc PREFIX=x86_64-w64-mingw32- libz.a
+    #   then put zlib.h, zconf.h in <zlib>/include and libz.a in <zlib>/lib
+    make windows SDL2=<SDL2-2.x>/x86_64-w64-mingw32 ZLIB=<zlib> [MINGW=<path>/bin/x86_64-w64-mingw32-]
+
+This writes `build-windows/m2emu.exe`, `m2run.exe` and `SDL2.dll` (the only
+DLL needed). On Windows, save data goes to an `NVDATA` folder next to
+`m2emu.exe`, as with the original emulator. MSVC isn't supported (the code
+uses GCC/Clang built-ins and C11 atomics).
+
+### Android
 
 For timing on an Android device (32-bit ARM, tuned for the Cortex-A7), the
 headless tool alone can be built with the Android NDK:
@@ -22,9 +62,14 @@ headless tool alone can be built with the Android NDK:
     adb push build-android/m2run /data/local/tmp/
     adb shell 'cd /data/local/tmp && M2_BENCH=1 ./m2run daytona 3000 /sdcard/roms'
 
+There is no Android frontend yet; its OpenGL ES build will use `GL=gles`.
+
+### Build options
+
 `CFLAGS`, `CXXFLAGS` and `LDFLAGS` can be given in the environment (for
 example `CFLAGS="-O1 -g -fsanitize=thread" LDFLAGS=-fsanitize=thread
-make BUILD=build-tsan`).
+make BUILD=build-tsan`). `SDL_CFLAGS`/`SDL_LIBS` and
+`ZLIB_CFLAGS`/`ZLIB_LIBS` replace the pkg-config / `-lz` defaults.
 
 ## Running
 
@@ -43,7 +88,7 @@ Example, 16:9 fullscreen with a pad-friendly shifter:
 | Option | Default | Effect |
 |--------|---------|--------|
 | `-r DIR` | `$M2_ROMS`, else `./roms` | ROM directory |
-| `-n DIR` | `$XDG_DATA_HOME/m2emu/NVDATA`, else `~/.local/share/m2emu/NVDATA` | where save data goes (see below) |
+| `-n DIR` | Linux: `$XDG_DATA_HOME/m2emu/NVDATA`, else `~/.local/share/m2emu/NVDATA`; Windows: `NVDATA` next to `m2emu.exe` | where save data goes (see below) |
 | `--size WxH` | 1024x768; with widescreen 1365x768 (16:9) or 1229x768 (16:10) | window size |
 | `--fullscreen` | off | start fullscreen (F11 toggles) |
 | `--vsync` | off | sync buffer swaps to the display; pacing is by the game's own frame rate either way |

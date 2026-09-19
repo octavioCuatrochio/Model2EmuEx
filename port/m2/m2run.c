@@ -11,6 +11,12 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef _WIN32
+#define NULL_DEVICE "NUL"
+#else
+#define NULL_DEVICE "/dev/null"
+#endif
+
 void m2_dump_tilemaps(const m2_board *b, const char *prefix, int nib_order);
 
 static void logmsg(const char *m) { fprintf(stderr, "%s\n", m); }
@@ -20,7 +26,11 @@ static m2_tilegen tg;
 static double now_ms(void)
 {
     struct timespec t;
+#ifdef _WIN32
+    timespec_get(&t, TIME_UTC);
+#else
     clock_gettime(CLOCK_MONOTONIC, &t);
+#endif
     return t.tv_sec * 1e3 + t.tv_nsec / 1e6;
 }
 
@@ -122,18 +132,19 @@ int main(int argc, char **argv)
     board = b;
     int prof_from = getenv("M2_PROF") ? atoi(getenv("M2_PROF")) : -1;
     const char *keys = getenv("M2_KEYS");
+    const char *wav_path = getenv("M2_WAV");
     int bench = getenv("M2_BENCH") != NULL;   /* full per-frame CPU work, timed */
     double tb[4] = { 0, 0, 0, 0 };
     if (bench) {
         m2tile_init(&tg, 1, 1, 1);
-        if (!getenv("M2_WAV")) setenv("M2_WAV", "/dev/null", 1);
+        if (!wav_path) wav_path = NULL_DEVICE;   /* sound runs, output discarded */
     }
     FILE *wav = NULL;
     uint32_t wav_samples = 0;
     double sample_debt = 0;
-    if (getenv("M2_WAV")) {   /* sound board output to a WAV file */
+    if (wav_path) {   /* sound board output to a WAV file */
         snd = m2snd_create(b);
-        wav = fopen(getenv("M2_WAV"), "wb");
+        wav = fopen(wav_path, "wb");
         if (wav) fwrite("RIFF\0\0\0\0WAVEfmt \x10\0\0\0\x01\0\x02\0\x44\xac\0\0\x10\xb1\x02\0\x04\0\x10\0data\0\0\0\0", 1, 44, wav);
     }
     int geohash = getenv("M2_GEOHASH") != NULL;   /* 3D output checksum, every frame */
