@@ -3,12 +3,14 @@
  *
  *   m2emu [-r romdir] [-n nvdir] [--vsync] [--fullscreen] [--size WxH]
  *         [--widescreen 16:9|16:10|off] [--scale N|auto] [--sharp]
+ *         [--texture-filter nearest|bilinear|trilinear]
  *         [--mesh blend|checker] [--saturation S] [--gamma G | --gamma R,G,B]
  *         [--shifter sequential|hpattern] [--hold-gears] [--pipeline on|off] <game>
  *
  * Keys (from the original's input definitions): 5/6 coin, 1/2 start,
  * F1 service, F2 test, arrows, Z X C V / A S D F G game buttons.
  * Frontend: Esc quit, F3 reset, P pause, Tab (hold) fast forward,
+ * F6 texture filter (nearest, bilinear, trilinear),
  * F7 saturation (1.0, 1.2, 1.4), F8 mesh blend/checker, F9 widescreen on/off,
  * F10 render scale (auto, 1-4), F11 fullscreen.
  * Pads (up to 2, hot-plug): see m2/m2input.c for the layout.
@@ -157,6 +159,7 @@ int main(int argc, char **argv)
     int wide_on = 0, scale_opt = 0;   /* scale 0 = auto */
     double wide_ratio = 16.0 / 9.0;
     int mesh_blend = 1, updown_gears = 0, hold_gears = 0, pipelined = 1;
+    int tex_filter = M2_TEX_NEAREST;
     float saturation = 1.0f, gamma[3] = { 1.0f, 1.0f, 1.0f };
 
     for (int i = 1; i < argc; i++) {
@@ -165,6 +168,13 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--vsync")) vsync = 1;
         else if (!strcmp(argv[i], "--fullscreen")) fullscreen = 1;
         else if (!strcmp(argv[i], "--sharp")) smooth = 0;
+        else if (!strcmp(argv[i], "--texture-filter") && i + 1 < argc) {
+            i++;
+            if (!strcmp(argv[i], "nearest")) tex_filter = M2_TEX_NEAREST;
+            else if (!strcmp(argv[i], "bilinear")) tex_filter = M2_TEX_BILINEAR;
+            else if (!strcmp(argv[i], "trilinear")) tex_filter = M2_TEX_TRILINEAR;
+            else { fprintf(stderr, "--texture-filter: nearest, bilinear or trilinear\n"); return 1; }
+        }
         else if (!strcmp(argv[i], "--shifter") && i + 1 < argc) updown_gears = !strcmp(argv[++i], "sequential");
         else if (!strcmp(argv[i], "--hold-gears")) hold_gears = 1;
         else if (!strcmp(argv[i], "--pipeline") && i + 1 < argc) pipelined = strcmp(argv[++i], "off") != 0;
@@ -191,9 +201,11 @@ int main(int argc, char **argv)
         const m2_game *list = m2_game_list(&n);
         fprintf(stderr, "usage: m2emu [-r romdir] [-n nvdir] [--vsync] [--fullscreen] [--size WxH]\n"
                         "             [--widescreen 16:9|16:10|off] [--scale N|auto] [--sharp]\n"
+                        "             [--texture-filter nearest|bilinear|trilinear]\n"
                         "             [--mesh blend|checker] [--saturation S] [--gamma G | --gamma R,G,B]\n"
                         "             [--shifter sequential|hpattern] [--hold-gears] [--pipeline on|off] <game>\n"
-                        "keys: Esc quit, F3 reset, P pause, Tab fast forward, F7 saturation, F8 mesh,\n"
+                        "keys: Esc quit, F3 reset, P pause, Tab fast forward, F6 texture filter,\n"
+                        "      F7 saturation, F8 mesh,\n"
                         "      F9 widescreen, F10 scale, F11 fullscreen. Full guide: port/README.md\n"
                         "games:");
         for (int i = 0; i < n; i++)
@@ -363,6 +375,7 @@ int main(int argc, char **argv)
                         if (audio) SDL_PauseAudioDevice(audio, paused);
                     }
                     else if (sc == SDL_SCANCODE_F3) want_reset = 1;
+                    else if (sc == SDL_SCANCODE_F6) tex_filter = (tex_filter + 1) % 3;
                     else if (sc == SDL_SCANCODE_F7) saturation = saturation < 1.1f ? 1.2f : saturation < 1.3f ? 1.4f : 1.0f;
                     else if (sc == SDL_SCANCODE_F8) mesh_blend = !mesh_blend;
                     else if (sc == SDL_SCANCODE_F9) wide_on = !wide_on;
@@ -489,6 +502,7 @@ int main(int argc, char **argv)
         view.frame_w = wide_on ? ((int)(M2_SCREEN_W * wide_ratio * 0.75 + 0.5) + 1) & ~1 : M2_SCREEN_W;
         view.stretch = wide_on ? pf.wide.stretch : 0;
         view.smooth = smooth;
+        view.tex_filter = tex_filter;
         view.mesh_blend = mesh_blend;
         view.saturation = saturation;
         view.scale = scale_opt ? scale_opt : h / M2_SCREEN_H;
