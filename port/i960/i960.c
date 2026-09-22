@@ -1128,6 +1128,9 @@ int i960_execute(i960_state *s, int cycles)
             decode(s, in, s->ip);
         }
         s->cur = in;
+#ifdef I960_TRACE
+        uint32_t at = s->ip;
+#endif
         s->ip += 4;
         s->multi_count = 0;
         in->op->exec(s, in);
@@ -1135,6 +1138,11 @@ int i960_execute(i960_state *s, int cycles)
         if ((s->ip ^ s->prev_ip) & 0xffe00000)
             select_region(s);
         s->prev_ip = s->ip;
+#ifdef I960_TRACE
+        /* after the region switch: s->cur is what the cycles come from */
+        if (s->trace)
+            s->trace(s->user, at, in);
+#endif
 
         /* Charged from s->cur, which a region predecode may have moved to
            another entry, exactly like the original's global pointer. */
@@ -1144,6 +1152,55 @@ int i960_execute(i960_state *s, int cycles)
     }
     s->cycles_left = 0;
     return cycles;
+}
+
+int i960_step(i960_state *s)
+{
+    i960_code_region *r = s->cur_region;
+    uint32_t idx = (s->ip - r->base) >> 2;
+    i960_insn *in;
+
+    if (idx < r->size >> 2) {
+        in = &r->cache[idx];
+        if (in->raw != ld32(r->words + idx * 4))
+            decode(s, in, s->ip);
+    } else {
+        in = &s->scratch;
+        decode(s, in, s->ip);
+    }
+    s->cur = in;
+    s->ip += 4;
+    s->multi_count = 0;
+    in->op->exec(s, in);
+    if ((s->ip ^ s->prev_ip) & 0xffe00000)
+        select_region(s);
+    s->prev_ip = s->ip;
+    s->cycles_left -= s->cur->op->cycles;
+    return s->cur->op->cycles;
+}
+
+void i960_call(i960_state *s, uint32_t target) { do_call(s, target); }
+
+int i960_ret(i960_state *s)
+{
+    uint32_t type = s->r[0] & 7;
+    op_ret(s, NULL);
+    return type == 0 || type == 7;
+}
+
+void i960_flushreg(i960_state *s) { op_flushreg(s, NULL); }
+
+int i960_region_switch(i960_state *s, int cycles)
+{
+    int was_valid;
+    uint32_t hi = s->ip >> 20;
+    i960_code_region *r = hi < s->region[1].base >> 20 ? &s->region[0]
+                        : hi < s->region[2].base >> 20 ? &s->region[1]
+                        : &s->region[2];
+    was_valid = r->valid;
+    select_region(s);
+    s->prev_ip = s->ip;
+    return was_valid ? cycles : s->cur->op->cycles;
 }
 
 /* orig 0x4c4c60 */

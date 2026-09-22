@@ -85,8 +85,22 @@ static void write_shot(const char *path, m2_tilegen *t, const m2_board *b)
 }
 static uint32_t prof_ip[4096], prof_n[4096];
 static int profiling;
+/* M2_SLICES=1: where the CPU stands at the end of each of the 210 slices of
+   a frame, as a checksum per frame (M2_SLICES=2 prints every slice). For
+   comparing two CPU implementations: the slices must line up. */
+static int slice_log;
+static uint64_t slice_hash = 1469598103934665603ull;
+static int slice_index;
 static void on_slice(void *u)
 {
+    if (slice_log) {
+        uint32_t ip = board->cpu->ip;
+        for (int k = 0; k < 4; k++)
+            slice_hash = (slice_hash ^ ((ip >> (k * 8)) & 0xff)) * 1099511628211ull;
+        if (slice_log > 1)
+            printf("  slice %3d: ip %08x stop %u left %d idle %d\n", slice_index, ip, board->cpu->stop, board->cpu->cycles_left, board->idle_count);
+        slice_index++;
+    }
     (void)u;
     if (!profiling || board->cpu->stop)
         return;
@@ -173,6 +187,7 @@ int main(int argc, char **argv)
     int io_from = getenv("M2_IOTRACE") ? atoi(getenv("M2_IOTRACE")) : -1;
     board = b;
     int prof_from = getenv("M2_PROF") ? atoi(getenv("M2_PROF")) : -1;
+    slice_log = getenv("M2_SLICES") ? atoi(getenv("M2_SLICES")) : 0;
     const char *keys = getenv("M2_KEYS");
     const char *wav_path = getenv("M2_WAV");
     int bench = getenv("M2_BENCH") != NULL;   /* full per-frame CPU work, timed */
@@ -282,6 +297,19 @@ int main(int argc, char **argv)
             if (f % 300 == 0 || f == frames)
                 printf("geohash %d: %016llx\n", f, (unsigned long long)gh);
         }
+        if (getenv("M2_RAMHASH")) {   /* a checksum of main RAM every frame */
+            uint64_t h = 1469598103934665603ull;
+            for (size_t k = 0; k < 0x100000; k += 8) {
+                uint64_t w;
+                memcpy(&w, b->ram + k, 8);
+                h = (h ^ w) * 1099511628211ull;
+            }
+            printf("frame %d ram %016llx\n", f, (unsigned long long)h);
+        }
+        if (slice_log) {
+            printf("frame %d slices %016llx\n", f, (unsigned long long)slice_hash);
+            slice_index = 0;
+        }
         if (f == 1 || f % 60 == 0 || f == frames || (getenv("M2_FROM") && f >= atoi(getenv("M2_FROM")) && f <= atoi(getenv("M2_TO")))) {
             printf("frame %4d: ip=%08x busy=%3u%% irq en=%03x pend=%03x | tile %lu pal %lu tex %lu cg %lu snd %lu | "
                    "tgp prog %u B, pc %04x | bufram %u nz, ram %u nz | invalid %lu",
@@ -332,6 +360,21 @@ int main(int argc, char **argv)
             snprintf(path, sizeof path, "%s-region%d.bin", getenv("M2_ROMS"), r);
             FILE *f = fopen(path, "wb");
             if (f) { fwrite(b->rom.ptr[r], 1, b->rom.size[r], f); fclose(f); }
+        }
+    }
+    if (getenv("M2_GEODUMP")) {   /* the last frame's polygons, in drawing order */
+        m2_geo *g = geo ? geo : m2geo_create();
+        m2geo_run(g, vb);
+        FILE *f = fopen(getenv("M2_GEODUMP"), "w");
+        if (f) {
+            for (int i = 0; i < g->npolys; i++) {
+                const m2_gpoly *p = &g->polys[g->order[i]];
+                fprintf(f, "%u %u", p->luma, p->nverts);
+                for (int k = 0; k < p->nverts; k++)
+                    fprintf(f, " %.2f,%.2f,%.3f", p->v[k].x, p->v[k].y, p->v[k].z);
+                fprintf(f, "\n");
+            }
+            fclose(f);
         }
     }
     if (getenv("M2_RAM")) {

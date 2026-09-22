@@ -129,6 +129,9 @@ struct i960_state {
     void *user;                                  /* passed to all callbacks */
     void (*hook)(void *user);                    /* run after hooked insns */
     void (*invalid_opcode)(void *user, uint32_t addr, uint32_t raw);
+    /* built with -DI960_TRACE only: called after each instruction, with the
+       instruction's address (s->ip is already the next one) */
+    void (*trace)(void *user, uint32_t addr, const i960_insn *in);
 
     i960_insn scratch;      /* used when ip is outside every code region */
 };
@@ -155,6 +158,22 @@ void i960_reset(i960_state *s);
 
 /* Runs for up to `cycles` cycles; returns the number actually executed. */
 int  i960_execute(i960_state *s, int cycles);
+
+/* For code that runs the guest outside i960_execute (the recompiled
+   Daytona USA in ../../daytona_y2k); each does what the interpreter does:
+   i960_step       one instruction at ip, as one turn of i960_execute's loop
+                   (without the stop check); returns the cycles charged
+   i960_call       the call/callx transfer (s->ip = return address on entry)
+   i960_ret        the ret instruction; 0 for the return types it ignores
+   i960_flushreg   the flushreg instruction
+   i960_region_switch  bookkeeping after an instruction moved ip to another
+                   2 MB area: returns the cycles to charge (`cycles`, unless a
+                   code region was predecoded, see QUIRKS.md) */
+int  i960_step(i960_state *s);
+void i960_call(i960_state *s, uint32_t target);
+int  i960_ret(i960_state *s);
+void i960_flushreg(i960_state *s);
+int  i960_region_switch(i960_state *s, int cycles);
 
 /* Signals interrupt pin `line` (0-3); the vector comes from ICON. */
 void i960_interrupt(i960_state *s, int line);

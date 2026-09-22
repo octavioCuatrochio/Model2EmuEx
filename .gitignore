@@ -8,3 +8,6 @@ port/build*/
 *.log
 __pycache__/
 *.pyc
+# generated from the ROM at build time
+daytona_y2k/build*/
+daytona_y2k/progress/

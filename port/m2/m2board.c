@@ -734,6 +734,8 @@ static void setup_map(m2_board *b)   /* orig 0x4cd450 */
 
 /* ------------------------------------------------------------- lifecycle */
 
+void (*m2_board_created)(m2_board *b);
+
 static void idle_hook(void *u)   /* orig 0x4c6780 */
 {
     m2_board *b = B(u);
@@ -786,6 +788,8 @@ m2_board *m2_create(const m2_game *game, const char *const *rom_dirs,
         return NULL;
     }
     m2_reset(b);
+    if (m2_board_created)
+        m2_board_created(b);
     return b;
 }
 
@@ -793,6 +797,8 @@ void m2_destroy(m2_board *b)
 {
     if (!b)
         return;
+    if (b->cpu_free)
+        b->cpu_free(b->cpu_ctx);
     if (b->cpu)
         i960_free(b->cpu);
     free(b->cpu);
@@ -855,6 +861,8 @@ void m2_reset(m2_board *b)   /* orig 0x4cd450, after allocation */
         i960_hook_insn(b->cpu, b->game->hook_addr);
     else if (b->game->hook == M2_HOOK_STOP_AFTER)
         i960_stop_after_insn(b->cpu, b->game->hook_addr);
+    if (b->cpu_reset)
+        b->cpu_reset(b->cpu_ctx);
 }
 
 /* orig 0x4cc7a0 */
@@ -868,7 +876,10 @@ void m2_run_frame(m2_board *b)
 
     b->prev_fps = fps;
     for (int slice = 0; slice < 210; slice++) {
-        i960_execute(b->cpu, cycles);
+        if (b->cpu_execute)
+            b->cpu_execute(b->cpu_ctx, cycles);
+        else
+            i960_execute(b->cpu, cycles);
         run_timers(b, timer_dec);
         irq_dispatch(b);
         if (b->sound_irqs) {

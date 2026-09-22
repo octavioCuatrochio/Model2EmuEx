@@ -105,7 +105,18 @@ typedef struct m2_board {
        clear; for copies that follow bufram (m2pipe clears it) */
     uint32_t bufram_dirty[4];
     uint32_t busy_slices;
+
+    /* optional replacement for the i960 interpreter (the recompiled
+       Daytona USA, ../../daytona_y2k): cpu_execute runs a slice as
+       i960_execute does, cpu_reset follows m2_reset, cpu_free m2_destroy */
+    int  (*cpu_execute)(void *ctx, int cycles);
+    void (*cpu_reset)(void *ctx);
+    void (*cpu_free)(void *ctx);
+    void *cpu_ctx;
 } m2_board;
+
+/* Called at the end of m2_create when set, to attach a CPU backend. */
+extern void (*m2_board_created)(m2_board *b);
 
 m2_board *m2_create(const m2_game *game, const char *const *rom_dirs,
                     void (*log)(const char *msg));

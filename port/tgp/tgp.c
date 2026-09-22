@@ -450,9 +450,19 @@ static uint32_t ext_read(tgp *t, uint32_t bank, uint32_t addr)
     }
 }
 
+#ifdef TGP_TRACE
+/* built with -DTGP_TRACE only (../../daytona_y2k/tools/trace.c): every
+   write the DSP makes to external memory */
+void (*tgp_trace_ext)(tgp *t, uint32_t bank, uint32_t addr, uint32_t v);
+#endif
+
 /* orig 0x4a7690 */
 static void ext_write(tgp *t, uint32_t bank, uint32_t addr, uint32_t v)
 {
+#ifdef TGP_TRACE
+    if (tgp_trace_ext)
+        tgp_trace_ext(t, bank, addr, v);
+#endif
     if (bank == 0) {
         if (addr - 0x20 <= 0xf) {
             s32(t, TGP_O_TREG + 4 * addr, v);
