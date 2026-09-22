@@ -1,0 +1,161 @@
+# Names for what the program's functions do, as they are worked out.
+# They appear in the generated C (build/gen) and in tools/map.py.
+#
+#   <address> <name> [<what it does>]
+#
+00000860 reset_entry           copies the boot record to RAM and reinitialises the processor through an IAC message
+00000910 copy_quads            bal: copies g0 bytes from g1 to g2, 16 at a time
+00000924 boot_init             hardware setup after the reinitialisation: sound port, tile layers, palettes
+00000bdc delay_short           bal: a few cycles of nothing, between writes to the sound port
+00000e00 frame_interrupt       the frame interrupt: per-frame work, then the counter the main loop waits on
+00001118 boot_main             sets up the machine and the link, then runs the game
+00001378 wait_frame            waits for the frame interrupt to bump the counter at 0x500000
+000172a0 object_grid_cell      which cell of the 16x16 grid an object is in
+000192c4 text_clear_rect       blanks a rectangle of a text layer
+00019fc8 snd_drain             sends the queued sound commands to the sound board (inside the frame work)
+0001a04c snd_queue_if_enabled  queues a sound command while sound is on
+0001a064 snd_queue             puts a sound command in the ring the frame interrupt drains
+0001a0c8 engine_note_update    turns the engine's rpm into a MIDI controller value
+0001b9a0 frame_tasks           the frame interrupt's second half: the frame hook, then the tile layers' scroll registers
+0001d750 frame_io_update       the frame interrupt's first half: watchdog, frame counter, link
+00017f1c frame_page            picks the picture buffer the geometry processor builds into
+00013d4  wait_two_frames       waits for two frame interrupts (the 30 Hz parts of the game)
+
+# Memory. `d` marks a place in the machine's address space, not a function.
+d 00500000 frame_count         bumped by the frame interrupt, watched by wait_frame
+d 00500004 copro_status_byte   the copro status the last frame started with
+d 0050000c frame_hook          called by frame_tasks when it isn't zero
+d 00501090 state_flags         what the machine is doing: bits 20 and 22 let sound play, 19-26 pick the parts of the scene
+d 005010b4 frames_missed       frames the game didn't keep up with
+d 00501220 player_car          -> the player's car state
+d 00501368 frame_page          the picture buffer being built (0 or 0x10000)
+d 00503001 snd_queue_count     commands waiting for the sound board
+d 00503002 snd_queue_read
+d 00503003 snd_queue_write
+d 00503006 snd_engine_note     the last engine note sent
+d 00503010 snd_command         the command being sent, a byte at a time
+d 00503020 snd_queue           16 words
+d 00540054 link_status_byte    the link board's status, read every frame
+d 005fe610 io_frame_counter
+d 0098000c copro_status        bit 2 flips on every frame displayed
+d 00e80000 irq_pending         writing clears the bits that are 0
+d 00e80004 irq_enable
+d 01a14002 link_status         network board
+d 01c00040 io_watchdog
+d 01c80000 sound_port          the sound board's command port
+d 00501300 scroll_shadow       x and y for each tile layer's map and window
+d 00501320 scroll_flags        bit per map: primary off / no window
+d 0100a000 tile_scroll         the tilemap chip's eight scroll registers
+0001d8e8 read_buttons          bal: the cabinet switches, and which changed since last frame
+d 005fe5ec buttons_held        active high
+d 005fe5f0 buttons_last        held the frame before
+d 005fe11c buttons_down        pressed since the last frame
+d 005fe5e8 buttons_up          released since the last frame
+d 01c00010 io_switches_lo
+d 01c0001c io_switches_hi
+0001d950 read_switches         all four switch ports as one word, with the same edges
+d 005fe120 switches_held
+d 005fe128 switches_last
+d 005fe584 switches_down       pressed since the last frame
+d 005fe124 switches_up
+0001db08 check_suspend         bal: service and test together hold the game
+0001db40 bookkeeping_tick      frame and play-time counters, saved to backup RAM
+00229230 backup_refresh        CRC of the bookkeeping to 0x1d00104, then a second copy of it at 0x1d00180
+002301d0 memset                g0: address, g1: byte, g2: count
+d 005fe600 frames_total        frames since power-on
+d 01d00000 backup_ram          survives power-off: settings and bookkeeping
+002292d8 crc16                 bal: CRC of g2 bytes from g0, in steps of g1 (table at 0x239de0)
+00229440 coin_update           per frame: coin sounds, service credit, coins to credits, coin meters
+002295c8 service_credit        bal: a credit from the service button
+00229630 coin_inserted         counts a coin and turns coins into credits by the settings
+00229728 coin_meter            bal: pulses a mechanical coin meter through the I/O outputs
+002297e0 coin_counters_save    coin counters to backup RAM, then backup_refresh
+d 005fe020 credits
+d 005fe045 coin_limit
+d 01c0001e io_outputs          coin meters (reads step the analog inputs)
+
+# Geometry processor (TGP) commands: `t <command> <name> <what it does>`.
+# The i960 sends command c by storing to c*16(g11), and its parameters
+# to 0x4000+(g11); results are read back from 0x4000+(g11). Confirmed
+# against the traffic by tools/tgpmodel.py (notes/geometry.md).
+t 02 mul                (a, b) -> a*b
+t 03 div                (a, b) -> a/b
+t 05 push               push the current matrix
+t 06 pop                pop the current matrix
+t 0a atan2              (x, y) -> angle of (x, y), 16-bit
+t 0f angle_to           (x1, z1, x2, z2) -> angle from point 2 to point 1
+t 10 identity           current matrix = identity
+t 11 get_matrix         -> the current matrix: 3x3 column by column, then the translation
+t 12 translate          (x, y, z), in the current frame
+t 13 scale              (sx, sy, sz)
+t 14 rotate_x           (angle): rotate by minus the angle about x
+t 15 rotate_y           (angle): about y
+t 16 rotate_z           (angle): about z
+t 1a transform          (x, y, z) -> the point through the current matrix
+t 1b sin                (angle) -> sin
+t 1c cos                (angle) -> cos
+t 1d mul_sin            (angle, r) -> r*sin
+t 1e mul_cos            (angle, r) -> r*cos
+t 24 acc_load           accumulator = x
+t 25 acc_get            -> the accumulator
+t 26 acc_add            accumulator += x
+t 27 acc_sub            accumulator -= x
+t 28 acc_mul            accumulator *= x
+t 29 acc_div            accumulator /= x
+t 31 set_quad           four (x, y, z) corners: a car's footprint
+t 32 in_quad            (x, y, z) -> -1 if (x, z) is inside the quad, else 0
+t 40 set_circle         (x, z, r)
+t 41 circle_dist        (x, z) -> distance from the circle's edge
+t 43 distance           (x1, z1, x2, z2) -> distance between the points
+t 44 polar              (angle, r) -> (r*sin, r*cos)
+t 47 step               (angle, d, x, z) -> (dx, dz, x+dx, z+dz), dx = d*sin, dz = d*cos
+00013250 draw_object           puts an object in the world (translate, turn, scale) and draws its model
+d 00501464 model_set           which set of models the objects are drawn from
+00017acc draw_model            writes a model's material, matrix and polygon chunks into the display list
+d 005010e8 poly_budget         polygons in this frame's display list
+d 005010f4 poly_limit          how many fit (5000)
+d 00501360 last_material       the material the display list is set to
+d 00501094 models_drawn
+00012f1c draw_scene            the frame's objects, each with the matrix left as it was found
+d 00501a80 view_mode
+00013050 draw_switch_view      the test switches pick one of sixteen extra views
+00013184 draw_matching_object  the first object in the list on the same side of the course as the player
+00001900 run_objects           walks the object list at 0x504000 and calls what each active one says
+0001308c draw_flat_marker      a model laid flat, its size easing towards one from a table (the marker under a car on the course map)
+d 00504000 objects             the object list: flags, size, and what to call for each
+d 005011fc objects_left
+000134c8 draw_map_cars         the markers on the course map: the player's, then every car near enough
+000136b0 draw_map_object       one marker, placed relative to the player, if it is inside that circle
+000133ac draw_course_map       the course map in the corner: a view from above, the outline, then the markers' scale
+00006a10 set_view              puts the matrix at the car the frame is seen from: its place, heading, pitch and roll
+00017e34 set_windows           the race view's window: the screen area drawn into and four points perspective can converge on
+00017e28 set_windows_mid       the same window with all four converging on the middle of the screen
+d 00502800 windows             the race view's window record
+d 00502820 windows_mid         ... and the plain one
+00017abc set_draw_mode         g0 is the renderer's mode word
+00017ed8 set_z_adjust          the exponent depth is measured against (4.0)
+00017ef0 end_display_list      waits for the geometry processor, marks the end, points the copro at the page
+d 00501368 list_page           which of the two buffer pages this frame's display list is in
+00017c38 set_model_view        the projection, light and matrix for the models that follow
+00017cf8 draw_model_chunks     the chunks of a model, under the view already set
+00017a80 draw_model_group      the models listed at 0x5016c0, all under one view
+d 005016c0 model_group         a count, then that many model numbers
+d 00501420 model_table         -> the models, by number
+0001a238 upload_texture_headers  copies the texture headers into the list, replacing fields of the ones named
+0001a350 scroll_texture_points   the same for texture coordinates, moved by (g1, g2): the sky follows the car
+00001664 load_texture_headers  fills the renderer's texture headers at start-up, a page a frame
+000016d0 load_texture_points   ... its texture coordinates
+00001730 load_polygons         ... polygon RAM, straight from data ROM
+00005958 load_texture_parameters  ... the shading parameters and coefficients
+000015b0 load_log_ram          ... the logarithm table, unpacked by next_log_word
+00001614 next_log_word         one word of the logarithm table: a run-length encoding of a rising value
+000059b4 open_frame            what a frame's list starts with: the drawing mode and the level of detail
+00225534 ease_in_detail        the level of detail brought in over a quarter turn, 128 * (1 - cos)
+d 028f0000 texture_headers_rom the tables the above load, in data ROM
+d 028e0000 polygons_rom
+d 02802fa4 log_rom
+d 02805120 texture_params_rom
+00011bec grid_cell             which cell of the 128x128 grid a point is in
+00011c28 road_at               how far a point is above the road, and which piece of course it is on
+d 00501428 cell_to_piece       -> the piece of course each grid cell belongs to
+d 0050142c piece_flags         -> what kind of surface each piece is
