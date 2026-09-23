@@ -20,6 +20,7 @@ typedef struct {
     int    vsync;
     int    frame_cap;        /* 1: run at the game's rate; 0: as fast as possible */
     int    pipelined;
+    int    frame_skip;       /* 1: when late, skip drawing frames (never the emulation) */
     int    scale;            /* render scale, 0 = auto */
     int    smooth;           /* linear filtering when scaling */
     int    tex_filter;       /* 3D textures: 0 nearest, 1 bilinear, 2 trilinear (M2_TEX_*) */

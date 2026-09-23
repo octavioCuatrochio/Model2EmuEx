@@ -20,6 +20,7 @@ void m2opt_defaults(m2_options *o)
     snprintf(o->romdir, sizeof o->romdir, "%s", getenv("M2_ROMS") ? getenv("M2_ROMS") : "roms");
     o->frame_cap = 1;
     o->pipelined = 1;
+    o->frame_skip = 1;
     o->smooth = 1;
     o->wide = M2_WIDE_DEFAULT;
     o->wide_ratio = 16.0 / 9.0;
@@ -92,6 +93,7 @@ int m2opt_parse(m2_options *o, int argc, char **argv, const char **game, int *no
         else if (!strcmp(a, "--shifter") && v) { o->updown_gears = !strcmp(v, "sequential"); i++; }
         else if (!strcmp(a, "--hold-gears")) o->hold_gears = 1;
         else if (!strcmp(a, "--pipeline") && v) { o->pipelined = strcmp(v, "off") != 0; i++; }
+        else if (!strcmp(a, "--frame-skip") && v) { o->frame_skip = strcmp(v, "off") != 0; i++; }
         else if (!strcmp(a, "--coop")) o->coop = 1;
         else if (!strcmp(a, "--mesh") && v) { o->mesh_blend = strcmp(v, "checker") != 0; i++; }
         else if (!strcmp(a, "--saturation") && v) { o->saturation = (float)atof(v); i++; }
@@ -196,6 +198,7 @@ int m2opt_load(m2_options *o, const char *path, char *last_game, int last_game_s
         else if (!strcmp(k, "vsync")) o->vsync = atoi(v) != 0;
         else if (!strcmp(k, "frame_cap")) o->frame_cap = atoi(v) != 0;
         else if (!strcmp(k, "pipeline")) o->pipelined = atoi(v) != 0;
+        else if (!strcmp(k, "frame_skip")) o->frame_skip = atoi(v) != 0;
         else if (!strcmp(k, "render_scale")) o->scale = atoi(v);
         else if (!strcmp(k, "smooth")) o->smooth = atoi(v) != 0;
         else if (!strcmp(k, "texture_filter")) set_tex_filter(o, v);
@@ -251,6 +254,7 @@ int m2opt_save(const m2_options *o, const char *path, const char *last_game)
     fprintf(f, "vsync = %d\n", o->vsync);
     fprintf(f, "frame_cap = %d\n", o->frame_cap);
     fprintf(f, "pipeline = %d\n", o->pipelined);
+    fprintf(f, "frame_skip = %d\n", o->frame_skip);
     fprintf(f, "render_scale = %d\n", o->scale);
     fprintf(f, "smooth = %d\n", o->smooth);
     fprintf(f, "texture_filter = %s\n", tex_filters[o->tex_filter >= 0 && o->tex_filter <= 2 ? o->tex_filter : 0]);

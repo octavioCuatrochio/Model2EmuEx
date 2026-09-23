@@ -502,6 +502,10 @@ static void config_tab(m2_options *o, bool *changed)
     explain("Emulate the next frame on another processor core while this one is drawn: much faster on multi-core "
             "processors, for one frame (about 17 ms) more delay between the controls and the screen. Off: "
             "emulate and draw in turn, for the least delay.");
+    c |= checkbox("Frame skip", &o->frame_skip);
+    explain("When the computer can't keep up, skip drawing a frame now and then (at most two in a row) instead "
+            "of slowing the game down: the game, its sound and the controls keep their speed. Only acts when "
+            "running late, so it never happens on a fast enough machine.");
 
     ImGui::SeparatorText("Controls");
     {

@@ -9,7 +9,8 @@
  *          [--sharp] [--texture-filter nearest|bilinear|trilinear]
  *          [--mesh blend|checker] [--saturation S]
  *          [--gamma G | --gamma R,G,B] [--shifter sequential|hpattern]
- *          [--hold-gears] [--pipeline on|off] [--aspect keep|stretch|crop]
+ *          [--hold-gears] [--pipeline on|off] [--frame-skip auto|off]
+ *          [--aspect keep|stretch|crop]
  *          [--coop [--split side|stack]]
  *
  * --coop (Daytona USA): two boards linked through their network boards, as
@@ -85,7 +86,9 @@ typedef struct {
     /* the frame on screen: drawn from these while the next one is made */
     m2_pipe_frame pf_cur;
     m2_view   view_cur;
-    m2_geo_frame drawn;
+    const m2_mesh *drawn;
+    m2_mesh  *mesh[2];             /* the geometrizer thread builds one while the other is drawn */
+    int       mesh_next;
     int       has_cur;
     int       rx, ry, rw, rh;      /* its window rectangle (GL: origin bottom left) */
     char      nvpath[2048];
@@ -159,6 +162,8 @@ static int geo_thread(void *arg)
         if (p->quit)
             break;
         m2geo_run(p->geo, p->vb);
+        m2_geo_frame f = m2geo_frame(p->geo);   /* and its vertices, off the main thread */
+        m2gl_mesh_build(p->mesh[p->mesh_next], &f, p->view.frame_w);
         SDL_SemPost(p->tdone);
     }
     return 0;
@@ -291,10 +296,12 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
         p->tg = malloc(sizeof *p->tg);
         p->pipe = m2pipe_create();
         p->geo = m2geo_create();
+        p->mesh[0] = m2gl_mesh_create();
+        p->mesh[1] = m2gl_mesh_create();
         if (!p->b)
             FAIL("%s: the ROM files can't be loaded from %.400s%s%s", game->title, romdir,
                  first_log[0] ? "\n" : "", first_log);
-        if (!p->tg || !p->pipe || !p->geo) FAIL("Out of memory");
+        if (!p->tg || !p->pipe || !p->geo || !p->mesh[0] || !p->mesh[1]) FAIL("Out of memory");
         /* linked boards keep their own save data (settings differ) */
         if (coop) snprintf(p->nvpath, sizeof p->nvpath, "%s/%s-coop%d.DAT", nvdir, game->name, i + 1);
         else snprintf(p->nvpath, sizeof p->nvpath, "%s/%s.DAT", nvdir, game->name);
@@ -426,7 +433,13 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
     const double frame_s = 1.0 / game->fps;
     const double freq = (double)SDL_GetPerformanceFrequency();
     double next = SDL_GetPerformanceCounter() / freq;
-    int running = 1, paused = 0, fast = 0, frames = 0;
+    int running = 1, paused = 0, fast = 0, frames = 0, drawn = 0;
+    /* frame skip: when running late, the frame just collected isn't drawn
+       (nor its tile layers made and uploaded: what changed carries over to
+       the next one); the board and the geometrizer still run every frame */
+    int frame_skip = o->frame_skip && !bench && !shot_frame;
+    int skip_draw = 0, skip_next = 0, skips_in_row = 0;
+    double board_avg = 0;   /* seconds per board frame, running average */
     double fps_t = next, bench_t0 = next;
 
     while (running) {
@@ -535,7 +548,8 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
                 continue;
             SDL_SemWait(p->tdone);
             p->geo_busy = 0;
-            p->drawn = m2geo_frame(p->geo);
+            p->drawn = p->mesh[p->mesh_next];
+            p->mesh_next ^= 1;
             p->view_cur = p->view;
             p->pf_cur = p->pf;
             p->has_cur = 1;
@@ -667,19 +681,21 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
         }
 
         /* draw the frames made (or the last ones again) */
-        if (!pl[0].has_cur) {   /* none yet */
+        skip_draw = skip_next && drew;
+        skip_next = 0;
+        if (!pl[0].has_cur && !skip_draw) {   /* none yet */
             glClearColor(0, 0, 0, 1);
             glClear(GL_COLOR_BUFFER_BIT);
         }
         for (int i = 0; i < nplayers; i++) {
             player *p = &pl[i];
-            if (p->has_cur) {
+            if (p->has_cur && !skip_draw) {
                 m2_view v = p->view_cur;   /* the settings keys act at once */
                 v.smooth = smooth;
                 v.tex_filter = tex_filter;
                 v.mesh_blend = mesh_blend;
                 v.saturation = saturation;
-                m2gl_draw_rect(p->gl, &p->drawn, &v, p->rx, p->ry, p->rw, p->rh);
+                m2gl_draw_rect(p->gl, p->drawn, &v, p->rx, p->ry, p->rw, p->rh);
             }
         }
         const m2_pipe_frame *pf = &pl[0].pf_cur;
@@ -718,10 +734,33 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
             free(px);
             running = 0;
         }
-        SDL_GL_SwapWindow(win);
+        if (!skip_draw) {
+            SDL_GL_SwapWindow(win);
+            drawn += drew;
+        }
 
         /* the collected frames' tile layers and uploads, while the GPU draws
-           and the geometrizer threads run (the uploads are for the next draw) */
+           and the geometrizer threads run (the uploads are for the next draw);
+           none if that draw will be skipped: already later than its start,
+           at most two frames in a row, and only while the boards keep up
+           (when they are what's slow, skipping the drawing gains nothing) */
+        int due = 0;
+        Uint64 board_ticks = 0;
+        for (int i = 0; i < nplayers; i++) {
+            due |= pl[i].tiles_due;
+            if (pl[i].ticks > board_ticks) board_ticks = pl[i].ticks;
+        }
+        if (due)
+            board_avg = board_avg * 0.8 + (double)board_ticks / freq * 0.2;
+        if (due && frame_skip && frame_cap && !fast && skips_in_row < 2 && board_avg < frame_s * 0.9 &&
+            SDL_GetPerformanceCounter() / freq > next + frame_s) {
+            skip_next = 1;
+            skips_in_row++;
+            for (int i = 0; i < nplayers; i++)
+                pl[i].tiles_due = 0;
+        } else if (due) {
+            skips_in_row = 0;
+        }
         for (int i = 0; i < nplayers; i++) {
             player *p = &pl[i];
             if (!p->tiles_due)
@@ -748,13 +787,16 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
                 else
                     snprintf(gear, sizeof gear, " - gear %c", pl[0].in.gear[0] ? '0' + pl[0].in.gear[0] : 'N');
             }
-            snprintf(title, sizeof title, "%s - Model 2%s - %.1f fps%s%s%s", game->title, coop ? " - linked" : "",
-                     frames / (now - fps_t), gear, wide_on ? " - wide" : "", paused ? " (paused)" : "");
+            char shown[32] = "";   /* frames drawn, when frame skip left some out */
+            if (drawn < frames)
+                snprintf(shown, sizeof shown, " (%.1f drawn)", drawn / (now - fps_t));
+            snprintf(title, sizeof title, "%s - Model 2%s - %.1f fps%s%s%s%s", game->title, coop ? " - linked" : "",
+                     frames / (now - fps_t), shown, gear, wide_on ? " - wide" : "", paused ? " (paused)" : "");
             SDL_SetWindowTitle(win, title);
 #ifdef __ANDROID__   /* no title bar to show it in: to the log */
             printf("%s\n", title);
 #endif
-            frames = 0;
+            frames = drawn = 0;
             fps_t = now;
         }
     }
@@ -782,6 +824,8 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
         m2snd_destroy(p->snd);
         m2gl_destroy(p->gl);
         m2geo_destroy(p->geo);
+        m2gl_mesh_destroy(p->mesh[0]);
+        m2gl_mesh_destroy(p->mesh[1]);
         free(p->tg);
     }
     m2net_destroy(net);
@@ -804,6 +848,8 @@ fail:
         m2snd_destroy(p->snd);
         m2gl_destroy(p->gl);
         m2geo_destroy(p->geo);
+        m2gl_mesh_destroy(p->mesh[0]);
+        m2gl_mesh_destroy(p->mesh[1]);
         free(p->tg);
         m2_destroy(p->b);
     }
@@ -823,7 +869,7 @@ static void usage(void)
                     "         [--widescreen 16:9|16:10|fill|off] [--scale N|auto] [--sharp]\n"
                     "         [--texture-filter nearest|bilinear|trilinear]\n"
                     "         [--mesh blend|checker] [--saturation S] [--gamma G | --gamma R,G,B]\n"
-                    "         [--shifter sequential|hpattern] [--hold-gears] [--pipeline on|off]\n"
+                    "         [--shifter sequential|hpattern] [--hold-gears] [--pipeline on|off] [--frame-skip auto|off]\n"
                     "         [--aspect keep|stretch|crop] [--coop [--split side|stack]]\n"
                     "keys: Esc quit (with the launcher: back to it), F3 reset, P pause, Tab fast forward,\n"
                     "      F6 texture filter, F7 saturation, F8 mesh, F9 widescreen, F10 scale,\n"

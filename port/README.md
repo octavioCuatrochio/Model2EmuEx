@@ -163,6 +163,7 @@ Configuration tab has the same settings.
 | `--coop` | off | Daytona USA: two linked machines in one window, one per player (see "Linked play") |
 | `--split side\|stack` | side | `--coop` layout: side by side, or one above the other (each player then gets a wide view that fills their half) |
 | `--pipeline on\|off` | on | on: the machine runs on its own thread, one frame ahead of the drawing (much faster on multi-core CPUs, one frame more input latency); off: emulate and draw each frame in turn |
+| `--frame-skip auto\|off` | auto | auto: when running late, skip drawing a frame (at most two in a row), only while the machine itself keeps up, so the game, its sound and the controls keep their speed; never on a fast enough computer |
 
 `-h` / `--help` (or `--no-gui` without a game) prints a short usage summary
 and the game list. Unknown options stop the program with a message.
@@ -314,7 +315,7 @@ three of them:
 | Thread | Work |
 |--------|------|
 | board | the i960 and the TGP: frame N + 2 |
-| geometrizer | the 3D geometrizer: frame N + 1 |
+| geometrizer | the 3D geometrizer and its vertex arrays: frame N + 1 |
 | main | window, input; draws frame N, then makes frame N + 1's tile layers and sends its changes to the GPU |
 | audio (SDL's) | the sound board: 68000 and sound chips, at the audio device's pace |
 
@@ -333,6 +334,11 @@ the other. The audio thread plays player 1's sound board only.
 - The game's sound commands reach the sound board through a lock-free
   queue. When the emulation can't keep full speed, music and effects keep
   their tempo.
+- Frame skip (`--frame-skip auto`, default): when a frame would be drawn
+  late while the machine keeps up, it isn't drawn, nor its tile layers made
+  or uploaded (what changed carries over to the next frame); the board and
+  the geometrizer still run every frame. The fps shown then adds how many
+  were drawn.
 - Other savings, all with the same output: tile layers kept as palette
   indices (colours looked up on the GPU), and of those only the rows that
   changed are uploaded; the tile layer textures and the polygon buffers in

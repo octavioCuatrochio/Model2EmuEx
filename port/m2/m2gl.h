@@ -50,15 +50,22 @@ typedef struct {
 /* Sends what changed in the frame's tables (the 3D ones too with `tables`)
    and tile layers to the GPU, for the next m2gl_draw. Clears t's row_dirty. */
 void   m2gl_upload(m2_gl *g, const struct m2_board *b, m2_tilegen *t, int tables);
+/* A frame's polygons ready to draw: vertex and index arrays built from the
+   geometrizer's output (m2gl_mesh_build: no GL, any thread). frame_w: the
+   frame's width, as m2_view.frame_w. 0 when out of memory. */
+typedef struct m2_mesh m2_mesh;
+m2_mesh *m2gl_mesh_create(void);
+void     m2gl_mesh_destroy(m2_mesh *m);
+int      m2gl_mesh_build(m2_mesh *m, const m2_geo_frame *geo, int frame_w);
 /* Draws the uploaded frame into the current framebuffer, letterboxed to the
-   frame's aspect (4:3 at 496 wide) in a `width` x `height` window. `geo` may
-   be NULL (no 3D). The geometrizer must have run with
-   wide_extra = (frame_w - 496) / 2. */
-void   m2gl_draw(m2_gl *g, const m2_geo_frame *geo, const m2_view *view, int width, int height);
+   frame's aspect (4:3 at 496 wide) in a `width` x `height` window. `mesh`
+   may be NULL (no 3D); it must be built for view->frame_w, from a
+   geometrizer run with wide_extra = (frame_w - 496) / 2. */
+void   m2gl_draw(m2_gl *g, const m2_mesh *mesh, const m2_view *view, int width, int height);
 /* The same into the window rectangle x, y, width, height (GL window
    coordinates, origin bottom left); only that rectangle is cleared. For
    several screens in one window (split screen). */
-void   m2gl_draw_rect(m2_gl *g, const m2_geo_frame *geo, const m2_view *view,
+void   m2gl_draw_rect(m2_gl *g, const m2_mesh *mesh, const m2_view *view,
                       int x, int y, int width, int height);
 
 #ifdef __cplusplus

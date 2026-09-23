@@ -41,8 +41,6 @@ struct m2_gl {
     int     luma_dirty, colour_dirty, atlas_ready;
     uint8_t *scratch;          /* 1024 x 32 texels */
     uint8_t *table;            /* colour table build: 64 x 1024 RGBA */
-    struct pvtx *pv;           /* one batch of polygon vertices and indices */
-    uint16_t    *idx;
 };
 
 /* A polygon vertex: 32 bytes. The per-polygon parameters travel as small
@@ -59,7 +57,6 @@ typedef struct pvtx {
 #define PF_MESH        2
 #define PF_UNTEXTURED  4
 #define BATCH_VERTS 65535     /* 16-bit indices */
-#define BATCH_INDEX (BATCH_VERTS * 3)
 
 /* ------------------------------------------------------------ shaders */
 
@@ -327,12 +324,10 @@ m2_gl *m2gl_create(int es)
         return NULL;
     g->scratch = malloc(1024 * 32);
     g->table = malloc(64 * 1024 * 4);
-    g->pv = malloc(sizeof(pvtx) * BATCH_VERTS);
-    g->idx = malloc(sizeof(uint16_t) * BATCH_INDEX);
     g->tile_prog = program(es, tile_vs, tile_fs, tile_attrs, 2);
     g->post_prog = program(es, tile_vs, post_fs, tile_attrs, 2);
     g->poly[M2_TEX_NEAREST].prog = program(es, poly_vs, poly_fs, poly_attrs, 3);
-    if (!g->scratch || !g->table || !g->pv || !g->idx || !g->tile_prog || !g->poly[0].prog || !g->post_prog) {
+    if (!g->scratch || !g->table || !g->tile_prog || !g->poly[0].prog || !g->post_prog) {
         m2gl_destroy(g);
         return NULL;
     }
@@ -405,8 +400,6 @@ void m2gl_destroy(m2_gl *g)
     glDeleteProgram(g->post_prog);
     free(g->scratch);
     free(g->table);
-    free(g->pv);
-    free(g->idx);
     free(g);
 }
 
@@ -550,7 +543,126 @@ static void draw_layers(m2_gl *g, int hipass, int frame_w, int stretch_a, int st
     }
 }
 
-static void draw_batch(m2_gl *g, int nv, int ni)
+/* ------------------------------------------------------------ mesh */
+
+/* A frame's polygons as vertices and indices, in batches of up to 65535
+   vertices (16-bit indices, relative to the batch). Built without GL, so
+   on any thread; drawn by draw_polys. */
+struct m2_mesh {
+    pvtx     *pv;
+    uint16_t *idx;
+    int       cap_v, cap_i, cap_b;
+    int       nbatch;
+    struct { int v0, nv, i0, ni; } *batch;
+};
+
+m2_mesh *m2gl_mesh_create(void)
+{
+    return calloc(1, sizeof(m2_mesh));
+}
+
+void m2gl_mesh_destroy(m2_mesh *m)
+{
+    if (!m)
+        return;
+    free(m->pv);
+    free(m->idx);
+    free(m->batch);
+    free(m);
+}
+
+static int grow(void **p, int *cap, int need, size_t size)
+{
+    if (need <= *cap)
+        return 1;
+    int n = need + need / 2;
+    void *q = realloc(*p, (size_t)n * size);
+    if (!q)
+        return 0;
+    *p = q;
+    *cap = n;
+    return 1;
+}
+
+int m2gl_mesh_build(m2_mesh *m, const m2_geo_frame *geo, int frame_w)
+{
+    m->nbatch = 0;
+    if (!geo || !geo->npolys)
+        return 1;
+    /* narrower than 496: a cropped frame, as m2gl_draw_rect */
+    if (frame_w < 64)
+        frame_w = 64;
+    const float half_w = frame_w * 0.5f;
+
+    int tv = 0, ti = 0;
+    for (int i = 0; i < geo->npolys; i++) {
+        int n = geo->polys[geo->order[i]].nverts;
+        tv += n;
+        ti += n > 2 ? (n - 2) * 3 : 0;
+    }
+    if (!grow((void **)&m->pv, &m->cap_v, tv, sizeof(pvtx)) ||
+        !grow((void **)&m->idx, &m->cap_i, ti, sizeof(uint16_t)) ||
+        !grow((void **)&m->batch, &m->cap_b, tv / BATCH_VERTS + 1, sizeof m->batch[0]))
+        return 0;
+
+    /* each polygon a fan of indexed triangles */
+    int v0 = 0, i0 = 0, nv = 0, ni = 0;
+    for (int i = 0; i < geo->npolys; i++) {
+        const m2_gpoly *p = &geo->polys[geo->order[i]];
+        if (nv + p->nverts > BATCH_VERTS) {
+            m->batch[m->nbatch].v0 = v0; m->batch[m->nbatch].nv = nv;
+            m->batch[m->nbatch].i0 = i0; m->batch[m->nbatch].ni = ni;
+            m->nbatch++;
+            v0 += nv;
+            i0 += ni;
+            nv = ni = 0;
+        }
+        uint16_t t0 = p->th[0], t1 = p->th[1], t2 = p->th[2], t3 = p->th[3];
+        int textured = (t0 >> 14) & 1;
+        float ax = (float)(32 * (t2 & 0x3f)), ay = (float)(32 * ((t2 >> 6) & 0x1f));
+        if (t2 & 0x1000)
+            ay += 1024.0f;   /* sheet 1 */
+        uint16_t par[4] = {
+            (uint16_t)(t1 & 0xff), (uint16_t)((t3 >> 6) & 0x3ff), p->luma,
+            (uint16_t)(((t0 >> 13) & 1 ? PF_TRANSLUCENT : 0) | ((t0 >> 15) & 1 ? PF_MESH : 0) |
+                       (textured ? 0 : PF_UNTEXTURED))
+        };
+        /* the texture's place, size and mirroring, as m2geo cut the pieces */
+        uint16_t rect[4] = {
+            (uint16_t)((uint16_t)ax | ((t0 >> 8) & 1 ? 0x8000 : 0)),
+            (uint16_t)((uint16_t)ay | ((t0 >> 9) & 1 ? 0x8000 : 0)),
+            (uint16_t)(32 << (t0 & 7)), (uint16_t)(32 << ((t0 >> 3) & 7))
+        };
+        pvtx *pv = m->pv + v0;
+        uint16_t *idx = m->idx + i0;
+        for (int k = 0; k < p->nverts; k++) {
+            const m2_gvert *v = &p->v[k];
+            pvtx *o = &pv[nv + k];
+            o->x = (v->x / half_w - 1.0f) * v->z;
+            o->y = (1.0f - v->y / 192.0f) * v->z;
+            o->z = 0;
+            o->w = v->z;
+            o->u = (ax + v->u) / ATLAS;
+            o->v = (ay + v->v) / ATLAS;
+            memcpy(o->par, par, sizeof par);
+            memcpy(o->rect, rect, sizeof rect);
+        }
+        for (int k = 1; k + 1 < p->nverts; k++) {
+            idx[ni++] = (uint16_t)nv;
+            idx[ni++] = (uint16_t)(nv + k);
+            idx[ni++] = (uint16_t)(nv + k + 1);
+        }
+        nv += p->nverts;
+    }
+    m->batch[m->nbatch].v0 = v0; m->batch[m->nbatch].nv = nv;
+    m->batch[m->nbatch].i0 = i0; m->batch[m->nbatch].ni = ni;
+    m->nbatch++;
+    return 1;
+}
+
+/* ------------------------------------------------------------ drawing */
+
+static void draw_batch(m2_gl *g, const pvtx *pv, int nv, const uint16_t *idx, int ni)
 {
     if (!ni)
         return;
@@ -562,13 +674,13 @@ static void draw_batch(m2_gl *g, int nv, int ni)
         g->vbo_cap[r] = vs + vs / 2;
         glBufferData(GL_ARRAY_BUFFER, g->vbo_cap[r], NULL, GL_DYNAMIC_DRAW);
     }
-    glBufferSubData(GL_ARRAY_BUFFER, 0, vs, g->pv);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, vs, pv);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g->ibo_poly[r]);
     if (is > g->ibo_cap[r]) {
         g->ibo_cap[r] = is + is / 2;
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, g->ibo_cap[r], NULL, GL_DYNAMIC_DRAW);
     }
-    glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, is, g->idx);
+    glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, is, idx);
     const GLsizei st = sizeof(pvtx);
     glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, st, (const void *)offsetof(pvtx, x));
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, st, (const void *)offsetof(pvtx, u));
@@ -577,12 +689,10 @@ static void draw_batch(m2_gl *g, int nv, int ni)
     glDrawElements(GL_TRIANGLES, ni, GL_UNSIGNED_SHORT, NULL);
 }
 
-static void draw_polys(m2_gl *g, const m2_geo_frame *geo, int frame_w, int scale, int meshblend, int filter)
+static void draw_polys(m2_gl *g, const m2_mesh *m, int scale, int meshblend, int filter)
 {
-    if (!geo->npolys)
+    if (!m->nbatch)
         return;
-    const float half_w = frame_w * 0.5f;
-
     if (filter < 0 || filter > M2_TEX_TRILINEAR)
         filter = M2_TEX_NEAREST;
     while (filter > 0 && !g->poly[filter].prog)
@@ -603,51 +713,8 @@ static void draw_polys(m2_gl *g, const m2_geo_frame *geo, int frame_w, int scale
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
-
-    /* each polygon a fan of indexed triangles; batches of up to 65535 vertices */
-    int nv = 0, ni = 0;
-    for (int i = 0; i < geo->npolys; i++) {
-        const m2_gpoly *p = &geo->polys[geo->order[i]];
-        if (nv + p->nverts > BATCH_VERTS) {
-            draw_batch(g, nv, ni);
-            nv = ni = 0;
-        }
-        uint16_t t0 = p->th[0], t1 = p->th[1], t2 = p->th[2], t3 = p->th[3];
-        int textured = (t0 >> 14) & 1;
-        float ax = (float)(32 * (t2 & 0x3f)), ay = (float)(32 * ((t2 >> 6) & 0x1f));
-        if (t2 & 0x1000)
-            ay += 1024.0f;   /* sheet 1 */
-        uint16_t par[4] = {
-            (uint16_t)(t1 & 0xff), (uint16_t)((t3 >> 6) & 0x3ff), p->luma,
-            (uint16_t)(((t0 >> 13) & 1 ? PF_TRANSLUCENT : 0) | ((t0 >> 15) & 1 ? PF_MESH : 0) |
-                       (textured ? 0 : PF_UNTEXTURED))
-        };
-        /* the texture's place, size and mirroring, as m2geo cut the pieces */
-        uint16_t rect[4] = {
-            (uint16_t)((uint16_t)ax | ((t0 >> 8) & 1 ? 0x8000 : 0)),
-            (uint16_t)((uint16_t)ay | ((t0 >> 9) & 1 ? 0x8000 : 0)),
-            (uint16_t)(32 << (t0 & 7)), (uint16_t)(32 << ((t0 >> 3) & 7))
-        };
-        for (int k = 0; k < p->nverts; k++) {
-            const m2_gvert *v = &p->v[k];
-            pvtx *o = &g->pv[nv + k];
-            o->x = (v->x / half_w - 1.0f) * v->z;
-            o->y = (1.0f - v->y / 192.0f) * v->z;
-            o->z = 0;
-            o->w = v->z;
-            o->u = (ax + v->u) / ATLAS;
-            o->v = (ay + v->v) / ATLAS;
-            memcpy(o->par, par, sizeof par);
-            memcpy(o->rect, rect, sizeof rect);
-        }
-        for (int k = 1; k + 1 < p->nverts; k++) {
-            g->idx[ni++] = (uint16_t)nv;
-            g->idx[ni++] = (uint16_t)(nv + k);
-            g->idx[ni++] = (uint16_t)(nv + k + 1);
-        }
-        nv += p->nverts;
-    }
-    draw_batch(g, nv, ni);
+    for (int b = 0; b < m->nbatch; b++)
+        draw_batch(g, m->pv + m->batch[b].v0, m->batch[b].nv, m->idx + m->batch[b].i0, m->batch[b].ni);
     glDisable(GL_BLEND);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
@@ -690,12 +757,12 @@ void m2gl_upload(m2_gl *g, const m2_board *b, m2_tilegen *t, int tables)
     g->tiles_valid = 1;
 }
 
-void m2gl_draw(m2_gl *g, const m2_geo_frame *geo, const m2_view *view, int width, int height)
+void m2gl_draw(m2_gl *g, const m2_mesh *mesh, const m2_view *view, int width, int height)
 {
-    m2gl_draw_rect(g, geo, view, 0, 0, width, height);
+    m2gl_draw_rect(g, mesh, view, 0, 0, width, height);
 }
 
-void m2gl_draw_rect(m2_gl *g, const m2_geo_frame *geo, const m2_view *view,
+void m2gl_draw_rect(m2_gl *g, const m2_mesh *mesh, const m2_view *view,
                     int x, int y, int width, int height)
 {
     /* narrower than 496: a cropped frame (the centre of the picture) */
@@ -714,8 +781,8 @@ void m2gl_draw_rect(m2_gl *g, const m2_geo_frame *geo, const m2_view *view,
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
     draw_layers(g, 0, frame_w, view->stretch & M2_STRETCH_A_LOW, view->stretch & M2_STRETCH_B_LOW);
-    if (geo)
-        draw_polys(g, geo, frame_w, scale, view->mesh_blend, view->tex_filter);
+    if (mesh)
+        draw_polys(g, mesh, scale, view->mesh_blend, view->tex_filter);
     draw_layers(g, 1, frame_w, view->stretch & M2_STRETCH_A_HIGH, view->stretch & M2_STRETCH_B_HIGH);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
