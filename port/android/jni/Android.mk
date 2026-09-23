@@ -43,5 +43,5 @@ LOCAL_CFLAGS       += -fno-strict-aliasing
 endif
 LOCAL_SHARED_LIBRARIES := SDL2
 LOCAL_LDLIBS       := -lz -llog -lm
-LOCAL_STRIP_MODE   := none   # symbols for simpleperf and crash reports
+LOCAL_STRIP_MODE   := none   # build.sh strips them, unless M2_DEBUG=1
 include $(BUILD_SHARED_LIBRARY)

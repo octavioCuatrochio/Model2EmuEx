@@ -4,7 +4,9 @@
 #   android/build.sh <NDK> <SDL2 source> [<Android SDK>]      (or: make apk NDK=... SDL=...)
 # Writes build-apk/m2emu.apk; signed with the debug key (~/.android/debug.keystore).
 # M2_DAYTONA=<daytona_y2k dir> builds in Daytona USA's recompiled program
-# (M2_APK_OUT: the output directory instead of ./build-apk).
+# (M2_APK_OUT: the output directory instead of ./build-apk). The libraries
+# are stripped; M2_DEBUG=1 keeps their symbols and debug information (for
+# simpleperf and crash reports). A release build: android/release.sh.
 set -e
 NDK=$1
 SDL=$2
@@ -23,6 +25,11 @@ ln -sfn "$(cd "$SDL" && pwd)/include" "$out/include/SDL2"   # for <SDL2/SDL.h>
 "$NDK/ndk-build" -C "$here" -j"$(nproc)" NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=jni/Android.mk \
     NDK_APPLICATION_MK=jni/Application.mk NDK_OUT="$out/obj" NDK_LIBS_OUT="$out/apk/lib" SDL="$(cd "$SDL" && pwd)" M2_INC="$out/include" \
     ${M2_DAYTONA:+M2_DAYTONA="$(cd "$M2_DAYTONA" && pwd)"}
+
+# ndk-build leaves them unstripped (Android.mk: LOCAL_STRIP_MODE none)
+if [ -z "$M2_DEBUG" ]; then
+    "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" --strip-unneeded "$out"/apk/lib/*/*.so
+fi
 
 # Java: SDL's activity and ours
 rm -rf "$out/classes" && mkdir -p "$out/classes"

@@ -35,7 +35,12 @@ colour saturation at 1.5, ROMs (MAME-style `daytona.zip`) in `~/Desktop/ROMs`:
 Add `--fullscreen` to use the whole screen at its own resolution (1080p on
 a 1080p display). On Windows the program is `build\m2emu.exe` (building:
 `port/README.md`, "Windows"). Two players linked: add `--coop`. All options
-and controls: `port/README.md`.
+and controls: `port/README.md`; where the ROMs go on each platform: its
+section "Where the ROMs go".
+
+Android (TV boxes): `port/android/release.sh` builds the final app,
+`port/build-release/m2emu.apk`; the ROMs go in
+`/sdcard/Android/data/org.m2emu/files/roms` (`port/README.md`, "Android").
 
 Input: `../M2emulator_1.1a/EMULATOR.EXE` (PE32, MSVC, not packed, no PDB).
 `emulator_multicpu.exe` differs by 6 bytes (PE checksum + one constant), so it is not decompiled separately.

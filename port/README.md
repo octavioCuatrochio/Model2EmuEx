@@ -60,10 +60,23 @@ The app (`m2emu` with OpenGL ES 2, for TV boxes such as the Allwinner H3
 with a Mali-400; 32-bit ARM, tuned for the Cortex-A7) is built with the
 Android NDK and SDK and SDL2's source (2.32.x, from libsdl.org); no Gradle:
 
-    make apk NDK=~/Android/Sdk/ndk/<version> SDL=<SDL2-2.32.x source>   # build-apk/m2emu.apk
-    adb install -r build-apk/m2emu.apk
+    android/release.sh [ROM folder]      # build-release/m2emu.apk: the final app
+    adb install -r build-release/m2emu.apk
     adb shell mkdir -p /sdcard/Android/data/org.m2emu/files/roms
-    adb push daytona.zip /sdcard/Android/data/org.m2emu/files/roms/
+    adb push daytona.zip vf2.zip srallyc.zip /sdcard/Android/data/org.m2emu/files/roms/
+
+`android/release.sh` makes a clean build with the libraries stripped (about
+2.3 MB, 7.5 MB installed). With `daytona.zip` in the ROM folder given
+(default `~/Desktop/ROMs`) it builds in Daytona USA's program recompiled to
+C (`../daytona_y2k`), which the app uses only for that ROM; everything else
+runs on the interpreter. It finds the NDK and SDL2 under `~/Android`, or
+takes `NDK=` and `SDL=`. For development:
+
+    make apk NDK=~/Android/Sdk/ndk/<version> SDL=<SDL2-2.32.x source>   # build-apk/m2emu.apk
+    M2_DEBUG=1 make apk ...      # libraries keep their symbols (simpleperf, crash reports)
+
+ndk-build rebuilds only what changed, not what saw a flag change: after
+changing flags, delete `build-apk/obj`.
 
 The app's folder `/sdcard/Android/data/org.m2emu/files` holds `roms/`,
 `NVDATA/`, `m2emu.ini` and `m2emu.log` (everything the program prints,
@@ -106,10 +119,31 @@ make BUILD=build-tsan`). `SDL_CFLAGS`/`SDL_LIBS` and
     build/m2emu                              # the launcher
     build/m2emu --no-gui [options] <game>    # a game straight from the command line
 
-ROMs are MAME-style zip sets (`daytona.zip`, `vf2.zip`, `srallyc.zip`, ...).
-Each file is looked up in the game's zip, then its parent's, then
-`model2.zip`. `build/m2emu --help` lists the options and the supported game
-names.
+`build/m2emu --help` lists the options and the supported game names.
+
+### Where the ROMs go
+
+ROMs are MAME-style sets: `daytona.zip`, `vf2.zip`, `srallyc.zip`, ... The
+emulator reads them from one ROM folder, the first of:
+
+1. `-r <folder>` on the command line;
+2. the folder chosen in the launcher's Games tab (saved as `rom_folder` in
+   `m2emu.ini`);
+3. the `M2_ROMS` environment variable;
+4. `roms`, next to where the program is started.
+
+| Platform | Default ROM folder | Settings file |
+|----------|--------------------|---------------|
+| Linux | `roms` in the current directory | `~/.config/m2emu/m2emu.ini` |
+| Windows | `roms` in the current directory | `m2emu.ini` next to `m2emu.exe` |
+| Android | `/sdcard/Android/data/org.m2emu/files/roms` | `m2emu.ini` in `/sdcard/Android/data/org.m2emu/files` |
+
+In the folder, each ROM file of a game is looked up in `<game>.zip`, then in
+a folder `<game>/` with the loose files, then in the parent set's zip or
+folder (for clones) and in `model2.zip`. On Android the folder is the app's
+own: `adb push` works (see Android, above), and so do file managers on
+Android 10 and older; newer versions keep other apps out of
+`Android/data`, and the launcher's Games tab can point elsewhere.
 
 Example without the launcher, 16:9 fullscreen with a pad-friendly shifter:
 

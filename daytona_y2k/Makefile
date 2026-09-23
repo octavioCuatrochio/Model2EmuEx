@@ -97,9 +97,10 @@ check-full: $(BUILD)/daytona-run
 # ---------------------------------------------------------------- Android
 # ../port's app (../port/README.md, "Android") with the recompiled program;
 # NDK: the Android NDK, SDL: SDL2's source
+APK_OUT ?= $(CURDIR)/$(BUILD)/apk
 apk: $(GEN)/table.c
 	@test -n "$(NDK)" -a -n "$(SDL)" || { echo "set NDK=<Android NDK> SDL=<SDL2 source>"; exit 1; }
-	M2_DAYTONA=$(CURDIR) M2_APK_OUT=$(CURDIR)/$(BUILD)/apk sh $(PORT)/android/build.sh $(NDK) $(SDL)
+	M2_DAYTONA=$(CURDIR) M2_APK_OUT=$(APK_OUT) sh $(PORT)/android/build.sh $(NDK) $(SDL)
 
 # ---------------------------------------------------------------- tracer
 trace: $(BUILD)/trace
