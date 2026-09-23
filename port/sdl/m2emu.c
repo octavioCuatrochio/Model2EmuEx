@@ -230,6 +230,15 @@ static uint8_t dik_from_sdl(SDL_Scancode sc)
     return 0;
 }
 
+/* a pad with at least one stick; TV remotes and media keys only have buttons */
+static int pad_has_sticks(int device)
+{
+    SDL_Joystick *j = SDL_JoystickOpen(device);
+    int axes = j ? SDL_JoystickNumAxes(j) : 0;
+    if (j) SDL_JoystickClose(j);
+    return axes >= 2;
+}
+
 static int pad_button_from_sdl(int b)
 {
     return b >= 0 && b < M2PAD_BUTTONS ? b : -1;   /* same order as SDL_GameControllerButton */
@@ -371,13 +380,16 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
             SDL_PauseAudioDevice(audio, 0);
     }
 
-    /* the pads already connected (their "added" events may have gone to the launcher) */
+    /* the pads already connected (their "added" events may have gone to the
+       launcher): real pads first, then devices without sticks (a TV box's IR
+       remote shows up as a pad with only a d-pad) */
     SDL_GameController *pads[2] = { NULL, NULL };
-    for (int j = 0, p = 0; j < SDL_NumJoysticks() && p < 2; j++)
-        if (SDL_IsGameController(j) && (pads[p] = SDL_GameControllerOpen(j))) {
-            printf("pad %d: %s\n", p + 1, SDL_GameControllerName(pads[p]));
-            p++;
-        }
+    for (int pass = 0, p = 0; pass < 2; pass++)
+        for (int j = 0; j < SDL_NumJoysticks() && p < 2; j++)
+            if (SDL_IsGameController(j) && pad_has_sticks(j) == !pass && (pads[p] = SDL_GameControllerOpen(j))) {
+                printf("pad %d: %s\n", p + 1, SDL_GameControllerName(pads[p]));
+                p++;
+            }
     /* host controls as they arrive; handed to the players before each frame
        (--coop: keyboard and pad 1 drive player 1, pad 2 player 2) */
     m2_input_state raw;
@@ -485,7 +497,19 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
                     if (pads[p] && SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pads[p])) ==
                                    SDL_JoystickGetDeviceInstanceID(e.cdevice.which))
                         open = 1;
-                for (int p = 0; p < 2 && !open; p++)
+                if (open) break;
+                /* a real pad takes the place of a stickless one (an IR remote) */
+                int real = pad_has_sticks(e.cdevice.which);
+                for (int p = 0; p < 2 && real; p++)
+                    if (pads[p] && SDL_JoystickNumAxes(SDL_GameControllerGetJoystick(pads[p])) < 2) {
+                        printf("pad %d: %s set aside\n", p + 1, SDL_GameControllerName(pads[p]));
+                        SDL_GameControllerClose(pads[p]);
+                        pads[p] = NULL;
+                        memset(raw.pad[p], 0, sizeof raw.pad[p]);
+                        memset(raw.axis[p], 0, sizeof raw.axis[p]);
+                        break;
+                    }
+                for (int p = 0; p < 2; p++)
                     if (!pads[p]) {
                         pads[p] = SDL_GameControllerOpen(e.cdevice.which);
                         if (pads[p])
@@ -920,6 +944,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    SDL_SetHint(SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0");   /* Android: not a pad */
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) < 0) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
