@@ -32,7 +32,9 @@ endif
 
 LOCAL_C_INCLUDES   := $(M2_ROOT)/imgui $(SDL)/include $(M2_INC)   # M2_INC: SDL2/ -> SDL/include
 # as the Makefile's android target; -w: the Makefile's warnings are for the desktop builds
-LOCAL_CFLAGS       := -O2 -mcpu=cortex-a7 -mfpu=neon-vfpv4 -DM2_GLES -D_DEFAULT_SOURCE -w
+# -fvisibility=hidden: calls between the library's own files go direct, not
+# through the PLT (SDL_main stays exported: SDL declares it so)
+LOCAL_CFLAGS       := -O2 -mcpu=cortex-a7 -mfpu=neon-vfpv4 -DM2_GLES -D_DEFAULT_SOURCE -w -fvisibility=hidden
 LOCAL_CONLYFLAGS   := -std=c11
 LOCAL_CPPFLAGS     := -std=c++14
 ifdef M2_DAYTONA

@@ -74,12 +74,13 @@ and environment variables of the desktop version:
     adb shell am start -n org.m2emu/.M2Activity --es args "'--no-gui --widescreen 16:9 daytona'" \
         --es env "'M2EMU_BENCH=2500;M2EMU_BENCH_FROM=1300'"
 
-(`env`: `NAME=value` pairs separated by `;`.) A game started with `--no-gui`
-is drawn at the game's own 384 lines, at the screen's shape (683x384 on a
-16:9 screen), and the display hardware scales that to the screen (1080p)
-for free: a Mali-400 can't draw every pixel of a 1080p frame at 60 Hz with
-this renderer. `--es surface WxH` picks another size, `--es surface full`
-the screen's own. The headless tool alone, for timing:
+(`env`: `NAME=value` pairs separated by `;`.) The 3D is drawn at the
+game's own resolution (the render scale is automatic: 1 on a 720p screen)
+and the GPU stretches the frame to the full screen; on a TV box the display
+hardware then scales Android's 720p to 1080p. `--es surface WxH` draws into
+a smaller surface for the display hardware to scale instead (less work for
+the GPU), but some boxes, the Allwinner H3 one among them, show it unscaled
+in a corner. The headless tool alone, for timing:
 
     make android NDK=~/Android/Sdk/ndk/<version>    # build-android/m2run
     adb push build-android/m2run /data/local/tmp/
