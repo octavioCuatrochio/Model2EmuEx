@@ -21,11 +21,24 @@ LOCAL_SRC_FILES := \
     m68k/m68kcpu.c m68k/m68kops.c m68k/softfloat/softfloat.c \
     snd/ym3438.cpp ymfm/ymfm_opn.cpp ymfm/ymfm_adpcm.cpp ymfm/ymfm_ssg.cpp
 
+# M2_DAYTONA=<daytona_y2k>: Daytona USA's program recompiled to C, generated
+# into its build/gen (see daytona_y2k/README.md), in place of the interpreter
+ifdef M2_DAYTONA
+LOCAL_SRC_FILES += \
+    $(M2_DAYTONA)/rt/rt.c $(M2_DAYTONA)/rt/coro.c \
+    $(wildcard $(M2_DAYTONA)/src/*.c) \
+    $(wildcard $(M2_DAYTONA)/build/gen/*.c)
+endif
+
 LOCAL_C_INCLUDES   := $(M2_ROOT)/imgui $(SDL)/include $(M2_INC)   # M2_INC: SDL2/ -> SDL/include
 # as the Makefile's android target; -w: the Makefile's warnings are for the desktop builds
 LOCAL_CFLAGS       := -O2 -mcpu=cortex-a7 -mfpu=neon-vfpv4 -DM2_GLES -D_DEFAULT_SOURCE -w
 LOCAL_CONLYFLAGS   := -std=c11
 LOCAL_CPPFLAGS     := -std=c++14
+ifdef M2_DAYTONA
+LOCAL_C_INCLUDES   += $(M2_DAYTONA)/rt $(M2_DAYTONA)/build/gen
+LOCAL_CFLAGS       += -fno-strict-aliasing
+endif
 LOCAL_SHARED_LIBRARIES := SDL2
 LOCAL_LDLIBS       := -lz -llog -lm
 LOCAL_STRIP_MODE   := none   # symbols for simpleperf and crash reports

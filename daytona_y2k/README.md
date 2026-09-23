@@ -44,6 +44,16 @@ ROM matches the one the C was made from; anything else, and
 | `DAYTONA_INTERP=1` | run the interpreter instead (for comparisons) |
 | `DAYTONA_RT_LOG=1` | report the recompiled program, and every place the interpreter had to take over |
 
+For Android (the port's app, `../port/README.md`, "Android"):
+
+    make apk ROMS=~/Desktop/ROMs NDK=~/Android/Sdk/ndk/<version> SDL=<SDL2 source>
+    adb install -r build/apk/m2emu.apk
+
+There `rt/coro.c` switches stacks by hand (Android has no ucontext). On the
+Allwinner H3 box the recompiled program takes the board from 8.8 to 6.9 ms
+per frame over a race; in the heaviest scenes most of what is left is the
+TGP interpreter.
+
 The generated C is derived from your ROM: it is written into `build/gen`
 at build time and is not part of the repository.
 

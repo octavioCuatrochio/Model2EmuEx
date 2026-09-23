@@ -1,7 +1,8 @@
 /*
  * Minimal coroutines: the recompiled program runs on its own stack, and
  * gives the CPU back to the board at the end of each time slice.
- * POSIX: ucontext; Windows: fibers.
+ * POSIX: ucontext; Windows: fibers; Android (32-bit ARM): a stack switch
+ * by hand.
  */
 #ifndef CORO_H
 #define CORO_H

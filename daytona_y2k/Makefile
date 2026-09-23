@@ -3,6 +3,7 @@
 #
 #   make ROMS=~/Desktop/ROMs   generate the C from daytona.zip, build everything
 #   make trace                 the coverage tracer (tools/trace.c) only
+#   make apk NDK=... SDL=...   the Android app with the recompiled program (build/apk/m2emu.apk)
 #   make clean
 #
 # The generated C is made from your ROM at build time (build/gen) and is not
@@ -70,10 +71,10 @@ $(BUILD)/genobj/%.o: $(GEN)/%.c rt/rt.h
 	$(CC) $(CFLAGS) -fno-strict-aliasing -Wno-unused-label -Wno-unused-parameter -Irt -c -o $@ $<
 
 $(BUILD)/daytona: $(BUILD)/gen.stamp $(RT_OBJ) $(SRC_OBJ) $(FRONT_OBJ) $(PORT_OBJ)
-	$(CXX) -o $@ $(RT_OBJ) $(SRC_OBJ) $(wildcard $(BUILD)/genobj/*.o) $(FRONT_OBJ) $(PORT_OBJ) $(SDL_LIBS) $(ZLIB_LIBS) -lm
+	$(CXX) $(LDFLAGS) -o $@ $(RT_OBJ) $(SRC_OBJ) $(wildcard $(BUILD)/genobj/*.o) $(FRONT_OBJ) $(PORT_OBJ) $(SDL_LIBS) $(ZLIB_LIBS) -lm
 
 $(BUILD)/daytona-run: $(BUILD)/gen.stamp $(RT_OBJ) $(SRC_OBJ) $(BUILD)/port/m2/m2run.o $(BUILD)/port/m2/m2tiledump.o $(PORT_OBJ)
-	$(CXX) -o $@ $(RT_OBJ) $(SRC_OBJ) $(wildcard $(BUILD)/genobj/*.o) $(BUILD)/port/m2/m2run.o $(BUILD)/port/m2/m2tiledump.o \
+	$(CXX) $(LDFLAGS) -o $@ $(RT_OBJ) $(SRC_OBJ) $(wildcard $(BUILD)/genobj/*.o) $(BUILD)/port/m2/m2run.o $(BUILD)/port/m2/m2tiledump.o \
 		$(PORT_OBJ) $(ZLIB_LIBS) -lm
 
 $(BUILD)/rt/%.o: rt/%.c
@@ -92,6 +93,13 @@ check: $(BUILD)/daytona-run
 
 check-full: $(BUILD)/daytona-run
 	ROMS=$(ROMS) FULL=1 tools/check.sh
+
+# ---------------------------------------------------------------- Android
+# ../port's app (../port/README.md, "Android") with the recompiled program;
+# NDK: the Android NDK, SDL: SDL2's source
+apk: $(GEN)/table.c
+	@test -n "$(NDK)" -a -n "$(SDL)" || { echo "set NDK=<Android NDK> SDL=<SDL2 source>"; exit 1; }
+	M2_DAYTONA=$(CURDIR) M2_APK_OUT=$(CURDIR)/$(BUILD)/apk sh $(PORT)/android/build.sh $(NDK) $(SDL)
 
 # ---------------------------------------------------------------- tracer
 trace: $(BUILD)/trace
@@ -150,4 +158,4 @@ clean:
 
 -include $(shell find $(BUILD) -name '*.d' 2>/dev/null)
 
-.PHONY: all check check-full clean trace gen-objs
+.PHONY: all check check-full clean trace gen-objs apk
