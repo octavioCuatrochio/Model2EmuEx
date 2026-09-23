@@ -17,7 +17,7 @@ Allwinner H3 (32-bit ARM Cortex-A7, Mali-400 GPU).
 ## Platforms
 - Linux x86 (SDL2; desktop OpenGL, or OpenGL ES 2 with `make GL=gles`): builds and runs; everything above was tested here.
 - Windows x86-64 (MinGW-w64: MSYS2 or cross-compiled; desktop OpenGL): builds; tested under Wine, where the emulation, sound and pictures match Linux. Not yet tried on a real Windows PC.
-- Android on the Allwinner H3: the target, untested yet. The headless tool `m2run` builds for it with the NDK (`make android`, `optimized` and `coop` branches); there is no Android frontend yet.
+- Android on the Allwinner H3 (TV box, Mali-400): the app (`make apk`, see `port/README.md`) runs Daytona USA with 3D, sound and widescreen, drawn at 683x384 and scaled to 1080p by the display. Full speed (57.5 fps) in the menus and most of a race; heavy scenes still drop to 30-40 fps (the i960 and TGP interpreters), and the box's thermal limit (85 °C) takes a CPU core away after a while.
 
 ## Run example
     cd port

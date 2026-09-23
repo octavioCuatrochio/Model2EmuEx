@@ -78,7 +78,25 @@ typedef struct {
     uint32_t *order_tmp;             /* sort scratch */
     int       npolys;
     uint32_t  seq;
+    /* the previous run's output: each run swaps these with polys and order,
+       so a frame stays drawable while the next one is made */
+    m2_gpoly *polys_prev;
+    uint32_t *order_prev;
 } m2_geo;
+
+/* One run's output, back to front: polys[order[i]] for i < npolys. Stays
+   valid through the next m2geo_run (not the one after). */
+typedef struct {
+    const m2_gpoly *polys;
+    const uint32_t *order;
+    int             npolys;
+} m2_geo_frame;
+
+static inline m2_geo_frame m2geo_frame(const m2_geo *g)
+{
+    m2_geo_frame f = { g->polys, g->order, g->npolys };
+    return f;
+}
 
 m2_geo *m2geo_create(void);
 void    m2geo_destroy(m2_geo *g);

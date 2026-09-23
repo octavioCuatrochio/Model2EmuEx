@@ -143,6 +143,9 @@ void m2opt_nvdir(const m2_options *o, char *out, int size)
     char *base = SDL_GetBasePath();
     snprintf(out, (size_t)size, "%sNVDATA", base ? base : "");
     SDL_free(base);
+#elif defined(__ANDROID__)   /* the app's folder on the shared storage */
+    const char *ext = SDL_AndroidGetExternalStoragePath();
+    snprintf(out, (size_t)size, "%s/NVDATA", ext ? ext : ".");
 #else
     const char *xdg = getenv("XDG_DATA_HOME"), *home = getenv("HOME");
     if (xdg && xdg[0]) snprintf(out, (size_t)size, "%s/m2emu/NVDATA", xdg);
@@ -156,6 +159,9 @@ void m2opt_config_path(char *out, int size)
     char *base = SDL_GetBasePath();
     snprintf(out, (size_t)size, "%sm2emu.ini", base ? base : "");
     SDL_free(base);
+#elif defined(__ANDROID__)
+    const char *ext = SDL_AndroidGetExternalStoragePath();
+    snprintf(out, (size_t)size, "%s/m2emu.ini", ext ? ext : ".");
 #else
     const char *xdg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
     if (xdg && xdg[0]) snprintf(out, (size_t)size, "%s/m2emu/m2emu.ini", xdg);

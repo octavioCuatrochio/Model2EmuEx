@@ -500,7 +500,9 @@ m2_geo *m2geo_create(void)
     g->polys = malloc(sizeof(m2_gpoly) * M2_MAX_POLYS);
     g->order = malloc(sizeof(uint32_t) * M2_MAX_POLYS);
     g->order_tmp = malloc(sizeof(uint32_t) * M2_MAX_POLYS);
-    if (!g->polys || !g->order || !g->order_tmp) {
+    g->polys_prev = malloc(sizeof(m2_gpoly) * M2_MAX_POLYS);
+    g->order_prev = malloc(sizeof(uint32_t) * M2_MAX_POLYS);
+    if (!g->polys || !g->order || !g->order_tmp || !g->polys_prev || !g->order_prev) {
         m2geo_destroy(g);
         return NULL;
     }
@@ -514,6 +516,8 @@ void m2geo_destroy(m2_geo *g)
     free(g->polys);
     free(g->order);
     free(g->order_tmp);
+    free(g->polys_prev);
+    free(g->order_prev);
     free(g);
 }
 
@@ -550,6 +554,12 @@ void m2geo_run(m2_geo *g, const m2_board *b)
 {
     wstream list = { b->bufram, 0x80000 / 4, (b->tgp.reg_803008 & 0x7ffff) / 4 };
 
+    m2_gpoly *pp = g->polys;   /* the last output stays valid (m2geo_frame) */
+    g->polys = g->polys_prev;
+    g->polys_prev = pp;
+    uint32_t *po = g->order;
+    g->order = g->order_prev;
+    g->order_prev = po;
     g->npolys = 0;
     g->seq = 0;
     g->xoff = 84.0f + b->hsync;

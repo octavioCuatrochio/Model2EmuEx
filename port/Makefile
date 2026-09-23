@@ -118,9 +118,15 @@ android:
 	$(MAKE) BUILD=build-android CC=$(NDK_BIN)/armv7a-linux-androideabi$(ANDROID_API)-clang \
 		CXX=$(NDK_BIN)/armv7a-linux-androideabi$(ANDROID_API)-clang++ GL=gles build-android/m2run
 
+# Android app (m2emu with OpenGL ES 2, SDL2 built from its source):
+#   make apk NDK=~/Android/Sdk/ndk/<version> SDL=<SDL2-2.x source>    # build-apk/m2emu.apk
+apk:
+	@test -n "$(NDK)" -a -n "$(SDL)" || { echo "set NDK=<Android NDK> SDL=<SDL2 source>"; exit 1; }
+	sh android/build.sh $(NDK) $(SDL)
+
 clean:
 	rm -rf $(BUILD)
 
 -include $(shell find $(BUILD) -name '*.d' 2>/dev/null)
 
-.PHONY: all clean android windows
+.PHONY: all clean android windows apk

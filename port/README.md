@@ -56,14 +56,34 @@ uses GCC/Clang built-ins and C11 atomics).
 
 ### Android
 
-For timing on an Android device (32-bit ARM, tuned for the Cortex-A7), the
-headless tool alone can be built with the Android NDK:
+The app (`m2emu` with OpenGL ES 2, for TV boxes such as the Allwinner H3
+with a Mali-400; 32-bit ARM, tuned for the Cortex-A7) is built with the
+Android NDK and SDK and SDL2's source (2.32.x, from libsdl.org); no Gradle:
+
+    make apk NDK=~/Android/Sdk/ndk/<version> SDL=<SDL2-2.32.x source>   # build-apk/m2emu.apk
+    adb install -r build-apk/m2emu.apk
+    adb shell mkdir -p /sdcard/Android/data/org.m2emu/files/roms
+    adb push daytona.zip /sdcard/Android/data/org.m2emu/files/roms/
+
+The app's folder `/sdcard/Android/data/org.m2emu/files` holds `roms/`,
+`NVDATA/`, `m2emu.ini` and `m2emu.log` (everything the program prints,
+including the frame rate once a second). Started from the home screen it
+opens the launcher; a game can be started from adb with the command line
+and environment variables of the desktop version:
+
+    adb shell am start -n org.m2emu/.M2Activity --es args "'--no-gui --widescreen 16:9 daytona'" \
+        --es env "'M2EMU_BENCH=2500;M2EMU_BENCH_FROM=1300'"
+
+(`env`: `NAME=value` pairs separated by `;`.) A game started with `--no-gui`
+is drawn at the game's own 384 lines, at the screen's shape (683x384 on a
+16:9 screen), and the display hardware scales that to the screen (1080p)
+for free: a Mali-400 can't draw every pixel of a 1080p frame at 60 Hz with
+this renderer. `--es surface WxH` picks another size, `--es surface full`
+the screen's own. The headless tool alone, for timing:
 
     make android NDK=~/Android/Sdk/ndk/<version>    # build-android/m2run
     adb push build-android/m2run /data/local/tmp/
     adb shell 'cd /data/local/tmp && M2_BENCH=1 ./m2run daytona 3000 /sdcard/roms'
-
-There is no Android frontend yet; its OpenGL ES build will use `GL=gles`.
 
 ### Automatic builds (GitHub Actions)
 
@@ -276,6 +296,7 @@ over. With no file, Daytona starts with its link setting on "single"
 | `M2EMU_KEYS=frame:key:frames,...` | m2emu | press keys by script (`key` = DirectInput code in hex, e.g. `06` coin, `02` start, `c8` up) |
 | `M2EMU_KEYS2=...` | m2emu | the same for player 2 with `--coop` |
 | `M2EMU_BENCH=N` | m2emu | run N frames unthrottled and print a timing split |
+| `M2EMU_BENCH_FROM=F` | m2emu | with `M2EMU_BENCH`: time only frames F to N (e.g. a race, after the attract mode) |
 | `M2EMU_ACTIONS=iter:a,...` | m2emu | frontend actions by main-loop iteration: `p` pause/unpause, `r` reset (F3), `q` quit |
 | `M2EMU_GUI_SHOT=file.ppm:N` | m2emu | save the launcher's picture after N frames, then quit |
 | `M2EMU_GUI_TAB=games\|config` | m2emu | open the launcher on that tab |
@@ -287,29 +308,38 @@ from the launcher too (the game then returns to it).
 
 ## Performance and threads
 
-`m2emu` spreads the work over three threads:
+`m2emu` spreads the work over four threads, each frame passing through
+three of them:
 
 | Thread | Work |
 |--------|------|
-| main | window, input, tile layers, 3D geometrizer, OpenGL drawing |
-| board | the i960 and the TGP, one frame ahead of the drawing (`m2/m2pipe.c` hands frames over) |
+| board | the i960 and the TGP: frame N + 2 |
+| geometrizer | the 3D geometrizer: frame N + 1 |
+| main | window, input; draws frame N, then makes frame N + 1's tile layers and sends its changes to the GPU |
 | audio (SDL's) | the sound board: 68000 and sound chips, at the audio device's pace |
 
-With `--coop` each board has its own board thread; the two wait for each
+`m2/m2pipe.c` hands frames from the board to the others; the geometrizer
+keeps its last frame's output while it makes the next (`m2geo_frame`).
+
+With `--coop` each board has its own board and geometrizer threads; the two boards wait for each
 other between frames, when the network link passes data from one board to
 the other. The audio thread plays player 1's sound board only.
 
-- `--pipeline on` (default): frame N is drawn while frame N + 1 runs, so a
-  frame costs the slower of the two instead of their sum, for one frame
-  (about 17 ms) more input latency. `--pipeline off` emulates and draws each
-  frame in turn on the main thread.
+- `--pipeline on` (default): the board runs ahead of the drawing, so a
+  frame costs the slowest thread instead of their sum, for about two frames
+  (35 ms) more input latency. `--pipeline off` runs the board on the main
+  thread, between drawing frames (the geometrizer still overlaps the
+  drawing, one frame behind).
 - The game's sound commands reach the sound board through a lock-free
   queue. When the emulation can't keep full speed, music and effects keep
   their tempo.
 - Other savings, all with the same output: tile layers kept as palette
-  indices (colours looked up on the GPU) and uploaded only when they
-  change; a radix sort and fast paths in the geometrizer; 32-byte indexed
-  vertices; the hand-over copies only the memory pages written in a frame.
+  indices (colours looked up on the GPU), and of those only the rows that
+  changed are uploaded; the tile layer textures and the polygon buffers in
+  rings of three, so the GPU driver never has to copy one still in use (the
+  Mali-400's does, on the CPU); a radix sort and fast paths in the
+  geometrizer; 32-byte indexed vertices; the hand-over copies only the
+  memory pages written in a frame.
 
 To check that a change leaves the output alone, compare two builds:
 

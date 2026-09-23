@@ -44,9 +44,12 @@ typedef struct {
     int      pal_dirty;          /* tile palette written */
     int      window_enable;      /* original: tilegen +0x11, always set */
     uint32_t layer_version;      /* incremented when `layer` changes */
+    uint8_t  row_dirty[2][M2_SCREEN_H];   /* rows of `layer` changed since the renderer
+                                             last cleared them (it uploads only those) */
     uint32_t pal_version;        /* incremented when `pal` changes */
     /* output; [0] = A (maps 0/1), [1] = B (maps 2/3). Draw order is B then A. */
     uint16_t layer[2][M2_SCREEN_W * M2_SCREEN_H];
+    uint16_t line[2][M2_SCREEN_W];   /* the line being composed */
 } m2_tilegen;
 
 void m2tile_init(m2_tilegen *t, float gamma_r, float gamma_g, float gamma_b);

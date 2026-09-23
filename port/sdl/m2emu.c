@@ -45,6 +45,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#ifdef __ANDROID__
+#include <unistd.h>
+#endif
 
 /* The GL flavour this build asks for: desktop OpenGL 2.1 or later
    (default), or OpenGL ES 2 with `make GL=gles` (M2_GLES). */
@@ -53,6 +57,14 @@
 #else
 #define USE_GLES 0
 #endif
+
+/* CPU time of the calling thread, seconds */
+static double thread_cpu_s(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
+    return ts.tv_sec + ts.tv_nsec * 1e-9;
+}
 
 /* One emulated machine and everything that draws and plays it. Normally
    one; with --coop two linked boards (split screen). */
@@ -65,8 +77,17 @@ typedef struct {
     m2_geo   *geo;
     m2_gl    *gl;
     m2_input_state in;
-    const m2_board *vb;            /* the drawn frame's video memories */
-    m2_pipe_frame pf;
+    const m2_board *vb;            /* the newest frame's video memories */
+    m2_pipe_frame pf;              /* the newest frame */
+    m2_view   view;                /* how it will be drawn (set when it arrives) */
+    int       tiles_due;           /* its tile layers and uploads are still to do */
+    int       geo_busy;            /* the geometrizer thread is on it */
+    /* the frame on screen: drawn from these while the next one is made */
+    m2_pipe_frame pf_cur;
+    m2_view   view_cur;
+    m2_geo_frame drawn;
+    int       has_cur;
+    int       rx, ry, rw, rh;      /* its window rectangle (GL: origin bottom left) */
     char      nvpath[2048];
     /* board thread: `go` starts a frame, `done` says it is captured;
        between the two the main thread leaves the board alone */
@@ -74,6 +95,11 @@ typedef struct {
     SDL_sem  *go, *done;
     int       quit;
     Uint64    ticks;               /* time spent in the last frame */
+    /* geometrizer thread: the 3D of the newest frame, while the main thread
+       draws the one before and then makes the new one's tile layers and
+       uploads (all only read `vb`) */
+    SDL_Thread *tthread;
+    SDL_sem  *tgo, *tdone;
 } player;
 
 #define MAX_PLAYERS 2
@@ -121,6 +147,19 @@ static int emu_thread(void *arg)
         m2pipe_capture(p->pipe, p->b);
         p->ticks = SDL_GetPerformanceCounter() - t0;
         SDL_SemPost(p->done);
+    }
+    return 0;
+}
+
+static int geo_thread(void *arg)
+{
+    player *p = arg;
+    for (;;) {
+        SDL_SemWait(p->tgo);
+        if (p->quit)
+            break;
+        m2geo_run(p->geo, p->vb);
+        SDL_SemPost(p->tdone);
     }
     return 0;
 }
@@ -352,21 +391,34 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
     const char *actions = getenv("M2EMU_ACTIONS");
     long iter = 0;
     int bench = getenv("M2EMU_BENCH") ? atoi(getenv("M2EMU_BENCH")) : 0;
-    double bt[4] = { 0, 0, 0, 0 };
+    double bt[2] = { 0, 0 };
+    int bench_from = getenv("M2EMU_BENCH_FROM") ? atoi(getenv("M2EMU_BENCH_FROM")) : 1;
+    double bench_cpu0 = 0;
 
     for (int i = 0; i < nplayers; i++) {
         player *p = &pl[i];
         p->go = SDL_CreateSemaphore(0);
         p->done = SDL_CreateSemaphore(0);
-        p->thread = p->go && p->done ? SDL_CreateThread(emu_thread, "m2 board", p) : NULL;
-        if (!p->thread) {   /* stop the ones already running */
-            for (int k = 0; k < i; k++) {
+        p->tgo = SDL_CreateSemaphore(0);
+        p->tdone = SDL_CreateSemaphore(0);
+        int sems = p->go && p->done && p->tgo && p->tdone;
+        p->thread = sems ? SDL_CreateThread(emu_thread, "m2 board", p) : NULL;
+        p->tthread = p->thread ? SDL_CreateThread(geo_thread, "m2 geometrizer", p) : NULL;
+        if (!p->tthread) {   /* stop the ones already running */
+            for (int k = 0; k <= i; k++) {
                 pl[k].quit = 1;
-                SDL_SemPost(pl[k].go);
-                SDL_WaitThread(pl[k].thread, NULL);
-                pl[k].thread = NULL;
+                if (pl[k].thread) {
+                    SDL_SemPost(pl[k].go);
+                    SDL_WaitThread(pl[k].thread, NULL);
+                    pl[k].thread = NULL;
+                }
+                if (pl[k].tthread) {
+                    SDL_SemPost(pl[k].tgo);
+                    SDL_WaitThread(pl[k].tthread, NULL);
+                    pl[k].tthread = NULL;
+                }
             }
-            FAIL("Can't start the emulation thread: %s", SDL_GetError());
+            FAIL("Can't start the emulation threads: %s", SDL_GetError());
         }
     }
     int in_flight = 0, want_reset = 0;
@@ -473,6 +525,23 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
         }
         iter++;
 
+        /* the frames whose 3D the geometrizer threads were making: they go
+           on screen in this iteration; the threads are then free for the
+           frames collected next */
+        int drew = 0;
+        for (int i = 0; i < nplayers; i++) {
+            player *p = &pl[i];
+            if (!p->geo_busy)
+                continue;
+            SDL_SemWait(p->tdone);
+            p->geo_busy = 0;
+            p->drawn = m2geo_frame(p->geo);
+            p->view_cur = p->view;
+            p->pf_cur = p->pf;
+            p->has_cur = 1;
+            drew = 1;
+        }
+
         /* collect the frame the board threads were running; from here until
            the next go, the boards are ours */
         Uint64 t0 = SDL_GetPerformanceCounter();
@@ -539,14 +608,14 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
             }
         }
 
-        /* draw the collected frames (or the last ones again); --coop: player 1
-           above (or left), player 2 below (or right) */
+        /* the collected frames: their views, and their 3D onto the
+           geometrizer threads, which make it while the frames before are
+           drawn below; --coop: player 1 above (or left), player 2 below (or
+           right) */
         int w, h;
         SDL_GL_GetDrawableSize(win, &w, &h);
         for (int i = 0; i < nplayers; i++) {
             player *p = &pl[i];
-            if (got)   /* after start and reset the pipe reports everything as written */
-                p->vb = m2pipe_apply(p->pipe, &p->replay, &p->pf);
             int rx = 0, ry = 0, rw = w, rh = h;   /* GL window coordinates, origin bottom left */
             if (nplayers > 1 && split_side) {   /* player 1 left */
                 rx = i * (w / nplayers);
@@ -556,6 +625,11 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
                 ry = (nplayers - 1 - i) * rh;
                 if (i == 0) rh = h - ry;
             }
+            p->rx = rx; p->ry = ry; p->rw = rw; p->rh = rh;
+            if (!got)
+                continue;
+            /* after start and reset the pipe reports everything as written */
+            p->vb = m2pipe_apply(p->pipe, &p->replay, &p->pf);
             /* the frame's aspect: 4:3, a fixed wide ratio, or that of its
                rectangle (fill; never narrower than 4:3, at most 4:1) */
             double rect = (double)rw / (rh > 0 ? rh : 1);
@@ -574,48 +648,63 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
                 ratio = rect < 0.5 ? 0.5 : rect;
             /* widescreen: a wider frame; the game's rule decides each frame
                whether the 3D sees the extra width and which layers stretch */
-            m2_view view;
-            view.frame_w = ((int)(M2_SCREEN_W * ratio * 0.75 + 0.5) + 1) & ~1;
-            view.stretch = crop ? M2_STRETCH_A_LOW | M2_STRETCH_A_HIGH | M2_STRETCH_B_HIGH
-                                : wide_on ? p->pf.wide.stretch : 0;
-            view.smooth = smooth;
-            view.tex_filter = tex_filter;
-            view.fill = squeeze;
-            view.mesh_blend = mesh_blend;
-            view.saturation = saturation;
-            view.scale = scale_opt ? scale_opt : rh / M2_SCREEN_H;
-            if (view.scale < 1) view.scale = 1;
-            p->geo->wide_extra = (view.frame_w - M2_SCREEN_W) * 0.5f;
+            m2_view *view = &p->view;
+            view->frame_w = ((int)(M2_SCREEN_W * ratio * 0.75 + 0.5) + 1) & ~1;
+            view->stretch = crop ? M2_STRETCH_A_LOW | M2_STRETCH_A_HIGH | M2_STRETCH_B_HIGH
+                                 : wide_on ? p->pf.wide.stretch : 0;
+            view->smooth = smooth;
+            view->tex_filter = tex_filter;
+            view->fill = squeeze;
+            view->mesh_blend = mesh_blend;
+            view->saturation = saturation;
+            view->scale = scale_opt ? scale_opt : rh / M2_SCREEN_H;
+            if (view->scale < 1) view->scale = 1;
+            p->geo->wide_extra = (view->frame_w - M2_SCREEN_W) * 0.5f;
             p->geo->wide_fov = wide_on && p->pf.wide.widescreen && !crop;
-            if (got) {
-                m2tile_render(p->tg, p->vb);
-                m2geo_run(p->geo, p->vb);
-            }
-            if (p->vb)
-                m2gl_draw_rect(p->gl, p->vb, p->tg, p->geo, &view, rx, ry, rw, rh);
+            SDL_SemPost(p->tgo);
+            p->geo_busy = 1;
+            p->tiles_due = 1;
         }
-        const m2_pipe_frame *pf = &pl[0].pf;
-        if (bench && got) {   /* M2EMU_BENCH=frames: unthrottled, timing split */
-            glFinish();
-            Uint64 t3 = SDL_GetPerformanceCounter();
+
+        /* draw the frames made (or the last ones again) */
+        if (!pl[0].has_cur) {   /* none yet */
+            glClearColor(0, 0, 0, 1);
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
+        for (int i = 0; i < nplayers; i++) {
+            player *p = &pl[i];
+            if (p->has_cur) {
+                m2_view v = p->view_cur;   /* the settings keys act at once */
+                v.smooth = smooth;
+                v.tex_filter = tex_filter;
+                v.mesh_blend = mesh_blend;
+                v.saturation = saturation;
+                m2gl_draw_rect(p->gl, &p->drawn, &v, p->rx, p->ry, p->rw, p->rh);
+            }
+        }
+        const m2_pipe_frame *pf = &pl[0].pf_cur;
+        if (bench && drew) {   /* M2EMU_BENCH=frames: unthrottled, timing split */
             Uint64 board = 0;
             for (int i = 0; i < nplayers; i++)
                 if (pl[i].ticks > board) board = pl[i].ticks;
             bt[0] += (double)board / freq;
             bt[1] += (double)(t1 - t0) / freq;
-            bt[3] += (double)(t3 - t1) / freq;
-            if (pf->frame == 1)
+            if ((int)pf->frame == bench_from) {   /* M2EMU_BENCH_FROM: time from this frame on */
+                memset(bt, 0, sizeof bt);
                 bench_t0 = SDL_GetPerformanceCounter() / freq;
+                bench_cpu0 = thread_cpu_s();
+            }
             if ((int)pf->frame >= bench) {
                 double wall = SDL_GetPerformanceCounter() / freq - bench_t0;
-                printf("%d frames: %.1f fps | per frame: board %.2f ms (own thread%s), "
-                       "tiles+geo+gl %.2f ms, waiting for the board %.2f ms\n",
-                       bench, (bench - 1) / wall, bt[0] * 1000 / bench, nplayers > 1 ? "s, slowest" : "",
-                       bt[3] * 1000 / bench, bt[1] * 1000 / bench);
+                int n = bench - bench_from;
+                printf("frames %d-%d: %.1f fps | per frame: board %.2f ms (own thread%s), "
+                       "main thread CPU %.2f ms, main thread waiting for the board %.2f ms\n",
+                       bench_from, bench, n / wall, bt[0] * 1000 / n, nplayers > 1 ? "s, slowest" : "",
+                       (thread_cpu_s() - bench_cpu0) * 1000 / n, bt[1] * 1000 / n);
                 running = 0;
             }
         }
-        if (shot_frame && got && (int)pf->frame == shot_frame) {   /* debugging: M2EMU_SHOT=file.ppm:frame */
+        if (shot_frame && drew && (int)pf->frame == shot_frame) {   /* debugging: M2EMU_SHOT=file.ppm:frame */
             unsigned char *px = malloc((size_t)w * h * 4);
             FILE *f = fopen(shot_path, "wb");
             if (px && f) {
@@ -630,6 +719,17 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
             running = 0;
         }
         SDL_GL_SwapWindow(win);
+
+        /* the collected frames' tile layers and uploads, while the GPU draws
+           and the geometrizer threads run (the uploads are for the next draw) */
+        for (int i = 0; i < nplayers; i++) {
+            player *p = &pl[i];
+            if (!p->tiles_due)
+                continue;
+            m2tile_render(p->tg, p->vb);
+            m2gl_upload(p->gl, p->vb, p->tg, 1);
+            p->tiles_due = 0;
+        }
 
         /* pace to the game's refresh rate */
         double now = SDL_GetPerformanceCounter() / freq;
@@ -651,6 +751,9 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
             snprintf(title, sizeof title, "%s - Model 2%s - %.1f fps%s%s%s", game->title, coop ? " - linked" : "",
                      frames / (now - fps_t), gear, wide_on ? " - wide" : "", paused ? " (paused)" : "");
             SDL_SetWindowTitle(win, title);
+#ifdef __ANDROID__   /* no title bar to show it in: to the log */
+            printf("%s\n", title);
+#endif
             frames = 0;
             fps_t = now;
         }
@@ -663,8 +766,12 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
         p->quit = 1;
         SDL_SemPost(p->go);
         SDL_WaitThread(p->thread, NULL);
+        SDL_SemPost(p->tgo);
+        SDL_WaitThread(p->tthread, NULL);
         SDL_DestroySemaphore(p->go);
         SDL_DestroySemaphore(p->done);
+        SDL_DestroySemaphore(p->tgo);
+        SDL_DestroySemaphore(p->tdone);
     }
     if (audio) SDL_CloseAudioDevice(audio);
     for (int i = 0; i < nplayers; i++) {
@@ -691,6 +798,8 @@ fail:
         player *p = &pl[i];
         if (p->go) SDL_DestroySemaphore(p->go);
         if (p->done) SDL_DestroySemaphore(p->done);
+        if (p->tgo) SDL_DestroySemaphore(p->tgo);
+        if (p->tdone) SDL_DestroySemaphore(p->tdone);
         m2pipe_destroy(p->pipe);
         m2snd_destroy(p->snd);
         m2gl_destroy(p->gl);
@@ -732,6 +841,18 @@ int main(int argc, char **argv)
     const char *game_name = NULL;
     int no_gui = 0, help = 0;
     char cfg[1024], last[64] = "";
+
+#ifdef __ANDROID__
+    /* Android: work in the app's folder on the shared storage
+       (/sdcard/Android/data/org.m2emu/files: roms/, NVDATA/, m2emu.ini), and
+       send stdout and stderr, which go nowhere there, to m2emu.log in it */
+    const char *ext = SDL_AndroidGetExternalStoragePath();
+    if (ext && chdir(ext) == 0 && freopen("m2emu.log", "w", stdout)) {
+        setvbuf(stdout, NULL, _IOLBF, 0);
+        dup2(fileno(stdout), fileno(stderr));
+        setvbuf(stderr, NULL, _IOLBF, 0);
+    }
+#endif
 
     /* --no-gui: the command line alone. Otherwise the launcher, with the
        settings it keeps in m2emu.ini (a game named on the command line is

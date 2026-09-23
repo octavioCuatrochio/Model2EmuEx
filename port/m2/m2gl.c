@@ -27,8 +27,16 @@ struct m2_gl {
     uint32_t layer_version, pal_version;
     int    tiles_valid;
     int    fb_w, fb_h, fb_smooth;
-    GLuint tex_tiles[2], atlas, luma, colour, fb_tex, fbo;
-    GLuint vbo_quad, vbo_poly, ibo_poly;
+    /* Tile layers and polygon buffers in rings of RING: the CPU writes one
+       the GPU has finished with. Mali-400: updating a texture or buffer a
+       queued frame still uses makes the driver copy all of it first. */
+#define RING 3
+    GLuint tex_tiles[RING][2], atlas, luma, colour, fb_tex, fbo;
+    uint8_t tile_pending[RING][2][M2_SCREEN_H];   /* rows each copy lacks */
+    int     tile_cur;
+    GLuint vbo_quad, vbo_poly[RING], ibo_poly[RING];
+    GLsizeiptr vbo_cap[RING], ibo_cap[RING];
+    int     buf_cur;
     uint8_t band_dirty[2][64];
     int     luma_dirty, colour_dirty, atlas_ready;
     uint8_t *scratch;          /* 1024 x 32 texels */
@@ -355,7 +363,8 @@ m2_gl *m2gl_create(int es)
     }
 
     for (int i = 0; i < 2; i++)
-        g->tex_tiles[i] = texture(M2_SCREEN_W, M2_SCREEN_H, GL_LUMINANCE_ALPHA, GL_NEAREST);
+        for (int r = 0; r < RING; r++)
+            g->tex_tiles[r][i] = texture(M2_SCREEN_W, M2_SCREEN_H, GL_LUMINANCE_ALPHA, GL_NEAREST);
     g->tile_pal = texture(256, 16, GL_RGBA, GL_NEAREST);
     g->atlas = texture(ATLAS, ATLAS, GL_LUMINANCE, GL_NEAREST);
     g->luma = texture(128, 256, GL_LUMINANCE, GL_NEAREST);
@@ -370,8 +379,8 @@ m2_gl *m2gl_create(int es)
     glGenBuffers(1, &g->vbo_quad);
     glBindBuffer(GL_ARRAY_BUFFER, g->vbo_quad);
     glBufferData(GL_ARRAY_BUFFER, sizeof quad, quad, GL_STATIC_DRAW);
-    glGenBuffers(1, &g->vbo_poly);
-    glGenBuffers(1, &g->ibo_poly);
+    glGenBuffers(RING, g->vbo_poly);
+    glGenBuffers(RING, g->ibo_poly);
 
     memset(g->band_dirty, 1, sizeof g->band_dirty);
     g->luma_dirty = g->colour_dirty = 1;
@@ -382,12 +391,13 @@ void m2gl_destroy(m2_gl *g)
 {
     if (!g)
         return;
-    GLuint tex[] = { g->tex_tiles[0], g->tex_tiles[1], g->atlas, g->luma, g->colour, g->fb_tex, g->tile_pal };
-    glDeleteTextures(7, tex);
+    GLuint tex[] = { g->atlas, g->luma, g->colour, g->fb_tex, g->tile_pal };
+    glDeleteTextures(5, tex);
+    glDeleteTextures(RING * 2, &g->tex_tiles[0][0]);
     glDeleteFramebuffers(1, &g->fbo);
     glDeleteBuffers(1, &g->vbo_quad);
-    glDeleteBuffers(1, &g->vbo_poly);
-    glDeleteBuffers(1, &g->ibo_poly);
+    glDeleteBuffers(RING, g->vbo_poly);
+    glDeleteBuffers(RING, g->ibo_poly);
     glDeleteProgram(g->tile_prog);
     for (int f = 0; f < 3; f++)
         if (g->poly[f].prog)
@@ -535,7 +545,7 @@ static void draw_layers(m2_gl *g, int hipass, int frame_w, int stretch_a, int st
     for (int i = 1; i >= 0; i--) {   /* layer B, then A */
         int stretch = i ? stretch_b : stretch_a;
         glUniform2f(g->u_tile_x, stretch ? 1.0f : (float)M2_SCREEN_W / (float)frame_w, 0.0f);
-        glBindTexture(GL_TEXTURE_2D, g->tex_tiles[i]);
+        glBindTexture(GL_TEXTURE_2D, g->tex_tiles[g->tile_cur][i]);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     }
 }
@@ -544,10 +554,21 @@ static void draw_batch(m2_gl *g, int nv, int ni)
 {
     if (!ni)
         return;
-    glBindBuffer(GL_ARRAY_BUFFER, g->vbo_poly);
-    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(nv * sizeof(pvtx)), g->pv, GL_STREAM_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g->ibo_poly);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)(ni * sizeof(uint16_t)), g->idx, GL_STREAM_DRAW);
+    /* the next buffers in the ring, grown when too small (then kept) */
+    int r = g->buf_cur = (g->buf_cur + 1) % RING;
+    GLsizeiptr vs = (GLsizeiptr)(nv * sizeof(pvtx)), is = (GLsizeiptr)(ni * sizeof(uint16_t));
+    glBindBuffer(GL_ARRAY_BUFFER, g->vbo_poly[r]);
+    if (vs > g->vbo_cap[r]) {
+        g->vbo_cap[r] = vs + vs / 2;
+        glBufferData(GL_ARRAY_BUFFER, g->vbo_cap[r], NULL, GL_DYNAMIC_DRAW);
+    }
+    glBufferSubData(GL_ARRAY_BUFFER, 0, vs, g->pv);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g->ibo_poly[r]);
+    if (is > g->ibo_cap[r]) {
+        g->ibo_cap[r] = is + is / 2;
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, g->ibo_cap[r], NULL, GL_DYNAMIC_DRAW);
+    }
+    glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, is, g->idx);
     const GLsizei st = sizeof(pvtx);
     glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, st, (const void *)offsetof(pvtx, x));
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, st, (const void *)offsetof(pvtx, u));
@@ -556,7 +577,7 @@ static void draw_batch(m2_gl *g, int nv, int ni)
     glDrawElements(GL_TRIANGLES, ni, GL_UNSIGNED_SHORT, NULL);
 }
 
-static void draw_polys(m2_gl *g, const m2_geo *geo, int frame_w, int scale, int meshblend, int filter)
+static void draw_polys(m2_gl *g, const m2_geo_frame *geo, int frame_w, int scale, int meshblend, int filter)
 {
     if (!geo->npolys)
         return;
@@ -631,32 +652,33 @@ static void draw_polys(m2_gl *g, const m2_geo *geo, int frame_w, int scale, int 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
 
-void m2gl_draw(m2_gl *g, const m2_board *b, const m2_tilegen *t, const m2_geo *geo,
-               const m2_view *view, int width, int height)
+void m2gl_upload(m2_gl *g, const m2_board *b, m2_tilegen *t, int tables)
 {
-    m2gl_draw_rect(g, b, t, geo, view, 0, 0, width, height);
-}
-
-void m2gl_draw_rect(m2_gl *g, const m2_board *b, const m2_tilegen *t, const m2_geo *geo,
-                    const m2_view *view, int x, int y, int width, int height)
-{
-    /* narrower than 496: a cropped frame (the centre of the picture) */
-    int frame_w = view->frame_w < 64 ? 64 : view->frame_w;
-    int scale = view->scale < 1 ? 1 : view->scale;
-
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_BLEND);
-    glDisable(GL_CULL_FACE);
-
-    if (geo)
+    if (tables)
         upload_tables(g, b, t);
     /* tile layers and palette: uploaded only when they changed */
     glActiveTexture(GL_TEXTURE0);
     if (!g->tiles_valid || t->layer_version != g->layer_version) {
+        /* the next copy in the ring gets the rows it lacks, in runs (the
+           Mali-400's driver re-tiles every uploaded texel on the CPU) */
+        g->tile_cur = (g->tile_cur + 1) % RING;
         for (int i = 0; i < 2; i++) {
-            glBindTexture(GL_TEXTURE_2D, g->tex_tiles[i]);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, M2_SCREEN_W, M2_SCREEN_H, GL_LUMINANCE_ALPHA,
-                            GL_UNSIGNED_BYTE, t->layer[i]);
+            for (int r = 0; r < RING; r++)
+                for (int y = 0; y < M2_SCREEN_H; y++)
+                    g->tile_pending[r][i][y] |= !g->tiles_valid || t->row_dirty[i][y];
+            memset(t->row_dirty[i], 0, M2_SCREEN_H);
+            uint8_t *pend = g->tile_pending[g->tile_cur][i];
+            glBindTexture(GL_TEXTURE_2D, g->tex_tiles[g->tile_cur][i]);
+            for (int y = 0; y < M2_SCREEN_H;) {
+                if (!pend[y]) { y++; continue; }
+                int y1 = y;
+                while (y1 < M2_SCREEN_H && pend[y1])
+                    y1++;
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, y, M2_SCREEN_W, y1 - y, GL_LUMINANCE_ALPHA,
+                                GL_UNSIGNED_BYTE, t->layer[i] + y * M2_SCREEN_W);
+                y = y1;
+            }
+            memset(pend, 0, M2_SCREEN_H);
         }
         g->layer_version = t->layer_version;
     }
@@ -666,6 +688,24 @@ void m2gl_draw_rect(m2_gl *g, const m2_board *b, const m2_tilegen *t, const m2_g
         g->pal_version = t->pal_version;
     }
     g->tiles_valid = 1;
+}
+
+void m2gl_draw(m2_gl *g, const m2_geo_frame *geo, const m2_view *view, int width, int height)
+{
+    m2gl_draw_rect(g, geo, view, 0, 0, width, height);
+}
+
+void m2gl_draw_rect(m2_gl *g, const m2_geo_frame *geo, const m2_view *view,
+                    int x, int y, int width, int height)
+{
+    /* narrower than 496: a cropped frame (the centre of the picture) */
+    int frame_w = view->frame_w < 64 ? 64 : view->frame_w;
+    int scale = view->scale < 1 ? 1 : view->scale;
+
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_CULL_FACE);
+
 
     /* the frame, at frame_w x 384 native pixels times the render scale */
     frame_buffer(g, frame_w * scale, M2_SCREEN_H * scale, view->smooth);

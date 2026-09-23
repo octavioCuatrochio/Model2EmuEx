@@ -196,11 +196,14 @@ static void compose(m2_tilegen *t, const uint8_t *tile)
     /* 1024x1024 is not handled: the original draws nothing at all */
     if ((wideB && (lmaskB & 0x200)) || (wideA && (lmaskA & 0x200))) {
         memset(t->layer, 0, sizeof t->layer);
+        memset(t->row_dirty, 1, sizeof t->row_dirty);
         return;
     }
 
     for (uint32_t L = 0; L < M2_SCREEN_H; L++) {
-        uint16_t *outA = t->layer[0] + L * M2_SCREEN_W, *outB = t->layer[1] + L * M2_SCREEN_W;
+        /* each line is composed apart and kept only when it changed, so the
+           renderer uploads just the changed rows */
+        uint16_t *outA = t->line[0], *outB = t->line[1];
 
         if (R0 & 0x8000) hA = -(uint32_t)ld16(tile + 0x8000 + 2 * L) & hmaskA;
         if (R2 & 0x8000) hB = -(uint32_t)ld16(tile + 0x8800 + 2 * L) & hmaskB;
@@ -234,6 +237,14 @@ static void compose(m2_tilegen *t, const uint8_t *tile)
         else
             line_window(outA, map_row(t, 0, 1, lA), hA, t->map[1] + lA2 * 512, hA2,
                         tile + 0xc000 + L * 8);
+
+        for (int i = 0; i < 2; i++) {
+            uint16_t *row = t->layer[i] + L * M2_SCREEN_W;
+            if (memcmp(row, t->line[i], sizeof t->line[i])) {
+                memcpy(row, t->line[i], sizeof t->line[i]);
+                t->row_dirty[i][L] = 1;
+            }
+        }
 
         lB = (lB + 1) & lmaskB;
         lA = (lA + 1) & lmaskA;

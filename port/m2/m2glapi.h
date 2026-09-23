@@ -31,6 +31,7 @@ typedef unsigned char GLubyte;
 typedef float         GLfloat;
 typedef char          GLchar;
 typedef ptrdiff_t     GLsizeiptr;
+typedef ptrdiff_t     GLintptr;
 typedef void          GLvoid;
 
 #define GL_FALSE                 0
@@ -64,6 +65,7 @@ typedef void          GLvoid;
 #define GL_ARRAY_BUFFER          0x8892
 #define GL_ELEMENT_ARRAY_BUFFER  0x8893
 #define GL_STREAM_DRAW           0x88E0
+#define GL_DYNAMIC_DRAW          0x88E8
 #define GL_STATIC_DRAW           0x88E4
 #define GL_FRAGMENT_SHADER       0x8B30
 #define GL_VERTEX_SHADER         0x8B31
@@ -84,6 +86,7 @@ typedef void          GLvoid;
     X(void,   glBindTexture, (GLenum target, GLuint texture)) \
     X(void,   glBlendFunc, (GLenum sfactor, GLenum dfactor)) \
     X(void,   glBufferData, (GLenum target, GLsizeiptr size, const void *data, GLenum usage)) \
+    X(void,   glBufferSubData, (GLenum target, GLintptr offset, GLsizeiptr size, const void *data)) \
     X(GLenum, glCheckFramebufferStatus, (GLenum target)) \
     X(void,   glClear, (GLbitfield mask)) \
     X(void,   glClearColor, (GLfloat r, GLfloat g, GLfloat b, GLfloat a)) \
@@ -138,6 +141,7 @@ M2GL_FUNCTIONS(M2GL_DECLARE)
 #define glBindTexture m2_glBindTexture
 #define glBlendFunc m2_glBlendFunc
 #define glBufferData m2_glBufferData
+#define glBufferSubData m2_glBufferSubData
 #define glCheckFramebufferStatus m2_glCheckFramebufferStatus
 #define glClear m2_glClear
 #define glClearColor m2_glClearColor

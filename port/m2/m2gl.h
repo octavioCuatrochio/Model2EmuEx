@@ -47,17 +47,19 @@ typedef struct {
     float saturation;   /* 1.0 = as the hardware; applied in the final pass */
 } m2_view;
 
-/* Draws a frame into the current framebuffer, letterboxed to the frame's
-   aspect (4:3 at 496 wide) in a `width` x `height` window. `geo` may be
-   NULL (no 3D). The geometrizer must have run with
+/* Sends what changed in the frame's tables (the 3D ones too with `tables`)
+   and tile layers to the GPU, for the next m2gl_draw. Clears t's row_dirty. */
+void   m2gl_upload(m2_gl *g, const struct m2_board *b, m2_tilegen *t, int tables);
+/* Draws the uploaded frame into the current framebuffer, letterboxed to the
+   frame's aspect (4:3 at 496 wide) in a `width` x `height` window. `geo` may
+   be NULL (no 3D). The geometrizer must have run with
    wide_extra = (frame_w - 496) / 2. */
-void   m2gl_draw(m2_gl *g, const struct m2_board *b, const m2_tilegen *t, const m2_geo *geo,
-                 const m2_view *view, int width, int height);
+void   m2gl_draw(m2_gl *g, const m2_geo_frame *geo, const m2_view *view, int width, int height);
 /* The same into the window rectangle x, y, width, height (GL window
    coordinates, origin bottom left); only that rectangle is cleared. For
    several screens in one window (split screen). */
-void   m2gl_draw_rect(m2_gl *g, const struct m2_board *b, const m2_tilegen *t, const m2_geo *geo,
-                      const m2_view *view, int x, int y, int width, int height);
+void   m2gl_draw_rect(m2_gl *g, const m2_geo_frame *geo, const m2_view *view,
+                      int x, int y, int width, int height);
 
 #ifdef __cplusplus
 }
