@@ -175,19 +175,44 @@ static uint32_t r32_240(void *u, uint32_t a)
 
 /* ------------------------------------------------ copro (TGP) ports */
 
-static uint32_t r32_copro_ctrl(void *u, uint32_t a) { return tgp_m2_ctrl_read32(&B(u)->tgp, a); }
-static void w16_copro_ctrl(void *u, uint32_t a, uint16_t v) { tgp_m2_ctrl_write16(&B(u)->tgp, a, v); }
-static void w32_copro_ctrl(void *u, uint32_t a, uint32_t v) { tgp_m2_ctrl_write32(&B(u)->tgp, a, v); }
-static uint8_t  r8_copro_fifo(void *u, uint32_t a)  { return tgp_m2_port_read8(&B(u)->tgp, a); }
-static uint16_t r16_copro_fifo(void *u, uint32_t a) { return tgp_m2_port_read16(&B(u)->tgp, a); }
-static uint32_t r32_copro_fifo(void *u, uint32_t a) { return tgp_m2_port_read32(&B(u)->tgp, a); }
-static void w16_copro_fifo(void *u, uint32_t a, uint16_t v) { tgp_m2_port_write16(&B(u)->tgp, a, v); }
-static void w32_copro_fifo(void *u, uint32_t a, uint32_t v) { tgp_m2_port_write32(&B(u)->tgp, a, v); }
+void (*m2_tgp_record)(int op, uint32_t a, uint32_t v);
+#define TREC(op, a, v) do { if (m2_tgp_record) m2_tgp_record(op, a, v); } while (0)
+
+static uint32_t r32_copro_ctrl(void *u, uint32_t a)
+{
+    uint32_t v = tgp_m2_ctrl_read32(&B(u)->tgp, a);
+    TREC(M2_TREC_CR32, a, v);
+    return v;
+}
+static void w16_copro_ctrl(void *u, uint32_t a, uint16_t v) { TREC(M2_TREC_CW16, a, v); tgp_m2_ctrl_write16(&B(u)->tgp, a, v); }
+static void w32_copro_ctrl(void *u, uint32_t a, uint32_t v) { TREC(M2_TREC_CW32, a, v); tgp_m2_ctrl_write32(&B(u)->tgp, a, v); }
+static uint8_t r8_copro_fifo(void *u, uint32_t a)
+{
+    uint8_t v = tgp_m2_port_read8(&B(u)->tgp, a);
+    TREC(M2_TREC_PR8, a, v);
+    return v;
+}
+static uint16_t r16_copro_fifo(void *u, uint32_t a)
+{
+    uint16_t v = tgp_m2_port_read16(&B(u)->tgp, a);
+    TREC(M2_TREC_PR16, a, v);
+    return v;
+}
+static uint32_t r32_copro_fifo(void *u, uint32_t a)
+{
+    uint32_t v = tgp_m2_port_read32(&B(u)->tgp, a);
+    TREC(M2_TREC_PR32, a, v);
+    return v;
+}
+static void w16_copro_fifo(void *u, uint32_t a, uint16_t v) { TREC(M2_TREC_PW16, a, v); tgp_m2_port_write16(&B(u)->tgp, a, v); }
+static void w32_copro_fifo(void *u, uint32_t a, uint32_t v) { TREC(M2_TREC_PW32, a, v); tgp_m2_port_write32(&B(u)->tgp, a, v); }
 
 static void w32_8c0000(void *u, uint32_t a, uint32_t v)   /* orig 0x4c7310 */
 {
-    if (a == 0x8c0010)
+    if (a == 0x8c0010) {
+        TREC(M2_TREC_PW32, a, v);
         tgp_m2_port_write32(&B(u)->tgp, a, v);
+    }
 }
 
 /* 0x980000: copro status and upload control */
@@ -244,7 +269,7 @@ static uint32_t r32_980_m2a(void *u, uint32_t a)  /* orig 0x4c8770, Model 2A */
     return 0;
 }
 
-static void w32_980(void *u, uint32_t a, uint32_t v) { tgp_m2_upload_write(&B(u)->tgp, a, v); }
+static void w32_980(void *u, uint32_t a, uint32_t v) { TREC(M2_TREC_UW32, a, v); tgp_m2_upload_write(&B(u)->tgp, a, v); }
 
 /* ------------------------------------------------ sound board ports */
 
@@ -599,9 +624,9 @@ static inline void buf_dirty(m2_board *b, uint32_t o, uint32_t n)
     for (uint32_t p = o >> 12; p <= ((o + n - 1) & 0x7ffff) >> 12; p++)
         b->bufram_dirty[p >> 5] |= 1u << (p & 31);
 }
-static void w8_buf(void *u, uint32_t a, uint8_t v)   { m2_board *b = B(u); a &= 0x7ffff; b->bufram[a] = v; buf_dirty(b, a, 1); }
-static void w16_buf(void *u, uint32_t a, uint16_t v) { m2_board *b = B(u); a &= 0x7ffff; if (a <= 0x7fffe) st16(b->bufram + a, v); else b->bufram[a] = (uint8_t)v; buf_dirty(b, a, 2); }
-static void w32_buf(void *u, uint32_t a, uint32_t v) { m2_board *b = B(u); a &= 0x7ffff; if (a <= 0x7fffc) st32(b->bufram + a, v); else memcpy(b->bufram + a, &v, 0x80000 - a); buf_dirty(b, a, 4); }
+static void w8_buf(void *u, uint32_t a, uint8_t v)   { m2_board *b = B(u); a &= 0x7ffff; TREC(M2_TREC_BW8, a, v); b->bufram[a] = v; buf_dirty(b, a, 1); }
+static void w16_buf(void *u, uint32_t a, uint16_t v) { m2_board *b = B(u); a &= 0x7ffff; TREC(M2_TREC_BW16, a, v); if (a <= 0x7fffe) st16(b->bufram + a, v); else b->bufram[a] = (uint8_t)v; buf_dirty(b, a, 2); }
+static void w32_buf(void *u, uint32_t a, uint32_t v) { m2_board *b = B(u); a &= 0x7ffff; TREC(M2_TREC_BW32, a, v); if (a <= 0x7fffc) st32(b->bufram + a, v); else memcpy(b->bufram + a, &v, 0x80000 - a); buf_dirty(b, a, 4); }
 
 static void map_r(m2_board *b, uint32_t page, uint32_t n, uint8_t *host,
                   i960_read8_fn r8, i960_read16_fn r16, i960_read32_fn r32)

@@ -117,6 +117,15 @@ typedef struct m2_board {
 
 /* Called at the end of m2_create when set, to attach a CPU backend. */
 extern void (*m2_board_created)(m2_board *b);
+/* Tooling (M2_TGP_RECORD in m2run, tgp/test/replay.c): when set, every
+   access the i960 makes to the TGP driver and every write to buffer RAM,
+   in order; reads with the value they returned. */
+enum {
+    M2_TREC_PW32 = 1, M2_TREC_PW16, M2_TREC_PR32, M2_TREC_PR16, M2_TREC_PR8,
+    M2_TREC_CW32, M2_TREC_CW16, M2_TREC_CR32, M2_TREC_UW32,
+    M2_TREC_BW8, M2_TREC_BW16, M2_TREC_BW32
+};
+extern void (*m2_tgp_record)(int op, uint32_t a, uint32_t v);
 
 m2_board *m2_create(const m2_game *game, const char *const *rom_dirs,
                     void (*log)(const char *msg));

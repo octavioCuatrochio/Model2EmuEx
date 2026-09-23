@@ -127,6 +127,48 @@ static uint32_t nonzero(const uint8_t *p, size_t n)
     return c;
 }
 
+/* M2_TGP_RECORD=file:from:to: the TGP's state at frame `from`, then every
+   access to it until frame `to`, for tgp/test/replay.c (format there) */
+static FILE *trec;
+static void trec_event(int op, uint32_t a, uint32_t v)
+{
+    uint8_t e[9] = { (uint8_t)op, (uint8_t)a, (uint8_t)(a >> 8), (uint8_t)(a >> 16), (uint8_t)(a >> 24),
+                     (uint8_t)v, (uint8_t)(v >> 8), (uint8_t)(v >> 16), (uint8_t)(v >> 24) };
+    fwrite(e, 1, sizeof e, trec);
+}
+
+static void trec_blob(const void *p, uint32_t n)
+{
+    fwrite(&n, 4, 1, trec);
+    if (n)
+        fwrite(p, 1, n, trec);
+}
+
+static void trec_start(const m2_board *b, const char *path)
+{
+    trec = fopen(path, "wb");
+    if (!trec) {
+        fprintf(stderr, "cannot write %s\n", path);
+        return;
+    }
+    fwrite("M2TR", 1, 4, trec);
+    /* the state, field by field (the struct holds pointers) */
+    const tgp *t = &b->tgp;
+    uint32_t regs[] = { t->table_ptr_value, t->prog_ptr_value, t->prog_upload_ctrl, t->prog_upload_off,
+                        t->data_upload_ctrl, t->data_upload_off, t->reg_98000c, t->ext_ptr, t->reg_803008,
+                        t->reg_801008_read, (uint32_t)t->unused_573320 };
+    trec_blob(t->blk, sizeof t->blk);
+    trec_blob(&t->in, sizeof t->in);
+    trec_blob(&t->out, sizeof t->out);
+    trec_blob(regs, sizeof regs);
+    trec_blob(b->tgp_prog, 0x40000);
+    trec_blob(b->tgp_data, 0x40000);
+    trec_blob(b->bufram, 0x80000);
+    trec_blob(b->tgp.table_rom, b->tgp.table_rom_size);
+    trec_blob(b->tgp.ext_rom, b->tgp.ext_rom_words * 4);
+    m2_tgp_record = trec_event;
+}
+
 int main(int argc, char **argv)
 {
     const char *game = argc > 1 ? argv[1] : "daytona";
@@ -210,7 +252,20 @@ int main(int argc, char **argv)
     m2_input_state ins;
     m2input_init(&ins);
 
+    const char *trec_spec = getenv("M2_TGP_RECORD");
+    char trec_path[1024] = "";
+    int trec_from = 0, trec_to = 0;
+    if (trec_spec && sscanf(trec_spec, "%1023[^:]:%d:%d", trec_path, &trec_from, &trec_to) != 3)
+        trec_spec = NULL;
+
     for (int f = 1; f <= frames; f++) {
+        if (trec_spec && f == trec_from)
+            trec_start(b, trec_path);
+        if (trec && f == trec_to + 1) {
+            m2_tgp_record = NULL;
+            fclose(trec);
+            trec = NULL;
+        }
         if (snd) {
             static int16_t buf[4096];
             sample_debt += (double)M2SND_RATE / b->game->fps;
@@ -391,6 +446,11 @@ int main(int argc, char **argv)
     }
     if (getenv("M2_DUMP"))
         m2_dump_tilemaps(b, getenv("M2_DUMP"), getenv("M2_NIB") ? atoi(getenv("M2_NIB")) : 2);
+    if (trec) {
+        m2_tgp_record = NULL;
+        fclose(trec);
+        trec = NULL;
+    }
     if (bench)
         printf("bench %d frames, ms/frame: emu %.3f  tiles %.3f  geo %.3f  sound %.3f  total %.3f\n", frames,
                tb[0] / frames, tb[1] / frames, tb[2] / frames, tb[3] / frames,

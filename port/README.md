@@ -375,6 +375,7 @@ Controlled by environment variables:
 | `M2_IOTRACE=n` | from frame n, count I/O board reads |
 | `M2_RAM=file` | write main RAM at the end |
 | `M2_ROMS=prefix` | write every ROM region to `prefix-regionN.bin` |
+| `M2_TGP_RECORD=file:from:to` | record the TGP's state at frame `from` and every access to it until `to`, for `tgp/test/replay.c` |
 
 `tools/i960dis.py` and `tools/m68kdis.c` disassemble the RAM/ROM dumps.
 

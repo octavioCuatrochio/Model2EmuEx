@@ -21,6 +21,7 @@ aren't ported yet.
 | `test/difftest.py` | interpreter vs. original machine code (Unicorn) |
 | `test/boardtest.py` | driver functions vs. original handlers |
 | `test/bench.c` | throughput benchmark |
+| `test/replay.c` | replays the TGP's work in a recorded game run: timing, and a check of every result |
 
 ## Using it
 
@@ -57,6 +58,24 @@ arm-none-linux-gnueabihf-gcc -std=c99 -D_POSIX_C_SOURCE=199309L -O2 \
     -o bench-armv7 test/bench.c tgp.c -lm
 adb push bench-armv7 /data/local/tmp/ && adb shell /data/local/tmp/bench-armv7
 ```
+
+A game's real work: `m2run` records the TGP's state at one frame and every
+access the i960 makes to it until another (`M2_TGP_RECORD=file:from:to`);
+`test/replay.c` runs that recording against this `tgp.c`, checks every value
+the TGP returns, and prints the time and a checksum of the final state
+(which two versions must agree on). Daytona's heavy race frames:
+
+```sh
+M2_KEYS=<race keys> M2_TGP_RECORD=heavy.trec:2500:3600 ../build/m2run daytona 3600 <romdir>
+gcc -std=c99 -D_POSIX_C_SOURCE=199309L -O2 -o replay test/replay.c tgp.c -lm
+./replay heavy.trec 3      # best of 3 runs
+```
+
+On the Allwinner H3 box that recording takes about 9.6 s (about 9 ms of TGP
+work per frame, some 160 cycles per DSP instruction). Tried without a
+measurable gain, all exact: predecoding every instruction into a handler
+(the decode table costs as much in cache misses as it saves), realigning the
+state block, and keeping PC, stop flag and repeat counter in registers.
 
 Results:
 - **Interpreter:** 18,161 random cases (8 seeds) with 0 mismatches.
