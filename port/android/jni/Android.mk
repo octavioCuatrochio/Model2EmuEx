@@ -15,7 +15,7 @@ LOCAL_SRC_FILES := \
     m2/m2gl.c m2/m2glapi.c \
     imgui/imgui.cpp imgui/imgui_draw.cpp imgui/imgui_tables.cpp imgui/imgui_widgets.cpp \
     imgui/backends/imgui_impl_sdl2.cpp \
-    i960/i960.c tgp/tgp.c m2/m2board.c m2/m2rom.c m2/m2tile.c m2/m2input.c m2/m2geo.c \
+    i960/i960.c tgp/tgp.c m2/m2board.c m2/m2rom.c m2/m2tile.c m2/m2input.c m2/m2geo.c m2/m2dump.c \
     m2/m2wide.c m2/m2pipe.c m2/m2net.c \
     snd/m2snd.c snd/scsp.c snd/multipcm.c \
     m68k/m68kcpu.c m68k/m68kops.c m68k/softfloat/softfloat.c \

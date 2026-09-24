@@ -478,7 +478,7 @@ static void config_tab(m2_options *o, bool *changed)
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 14);
     c |= ImGui::SliderFloat("Saturation", &o->saturation, 0.5f, 2.0f, "%.2f");
     explain("Colour strength of the final picture. 1.00 is the hardware's colours; higher is more vivid. "
-            "F7 cycles 1.0 / 1.2 / 1.4 while playing.");
+            "F5 cycles 1.0 / 1.2 / 1.4 while playing.");
 
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 14);
     c |= ImGui::SliderFloat3("Gamma (R, G, B)", o->gamma, 0.5f, 2.0f, "%.2f");
@@ -587,6 +587,8 @@ int m2launch_init(SDL_Window *win, SDL_GLContext ctx, int es)
     st.ItemSpacing = ImVec2(10, 7);
     if (!ImGui_ImplSDL2_InitForOpenGL(win, ctx) || !ImGui_ImplM2GL_Init(es != 0))
         return -1;
+    /* every pad, not just the first one found (on a TV box, the IR remote) */
+    ImGui_ImplSDL2_SetGamepadMode(ImGui_ImplSDL2_GamepadMode_AutoAll);
     g_ready = true;
     return 0;
 }
@@ -712,5 +714,60 @@ int m2launch_run(SDL_Window *win, m2_options *o, const char *cfg_path, char *gam
         }
         SDL_GL_SwapWindow(win);
     }
+    return result;
+}
+
+/* ------------------------------------------------------------ pause popup */
+
+static bool g_pause_opening;
+
+int m2pause_available(void)
+{
+    return g_ready;
+}
+
+void m2pause_open(void)
+{
+    g_pause_opening = true;
+    ImGui::GetIO().ClearEventsQueue();   /* what happened while the game ran */
+    ImGui::GetIO().ClearInputKeys();
+}
+
+void m2pause_event(const SDL_Event *e)
+{
+    ImGui_ImplSDL2_ProcessEvent(e);
+}
+
+int m2pause_frame(SDL_Window *win)
+{
+    int w, h, result = 0;
+    SDL_GL_GetDrawableSize(win, &w, &h);
+    ImGui_ImplSDL2_NewFrame();
+    ImGui::GetStyle().FontSizeBase = h < 600 ? 16.0f : h / 30.0f;
+    ImGui::NewFrame();
+    if (g_pause_opening) {
+        ImGui::OpenPopup("Paused");
+        g_pause_opening = false;
+    }
+    ImGuiViewport *vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    if (ImGui::BeginPopupModal("Paused", NULL, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove)) {
+        float bw = ImGui::GetFontSize() * 8;
+        if (ImGui::Button("Continue", ImVec2(bw, 0)))
+            result = 1;
+        ImGui::SetItemDefaultFocus();
+        if (ImGui::Button("Exit", ImVec2(bw, 0)))
+            result = 2;
+        if (result)
+            ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+    ImGui::Render();
+    glViewport(0, 0, w, h);
+    ImGui_ImplM2GL_RenderDrawData(ImGui::GetDrawData());
+    /* the game's drawing sets its own state, but not these */
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    for (int a = 0; a < 3; a++)
+        glDisableVertexAttribArray((GLuint)a);
     return result;
 }

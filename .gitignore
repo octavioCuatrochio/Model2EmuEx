@@ -11,3 +11,5 @@ __pycache__/
 # generated from the ROM at build time
 daytona_y2k/build*/
 daytona_y2k/progress/
+# F7 3D scene dumps
+dumps/

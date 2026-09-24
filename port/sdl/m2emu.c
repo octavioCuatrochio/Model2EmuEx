@@ -23,11 +23,13 @@
  * F1 service, F2 test, arrows, Z X C V / A S D F G game buttons.
  * Frontend: Esc back to the launcher (quit with --no-gui), F3 reset,
  * P pause, Tab (hold) fast forward, F6 texture filter (nearest, bilinear,
- * trilinear), F7 saturation (1.0, 1.2, 1.4), F8 mesh blend/checker, F9
- * widescreen on/off, F10 render scale (auto, 1-4), F11 fullscreen.
+ * trilinear), F5 saturation (1.0, 1.2, 1.4), F7 the 3D scene to a model
+ * (dumps/, m2/m2dump.h), F8 mesh blend/checker, F9 widescreen on/off,
+ * F10 render scale (auto, 1-4), F11 fullscreen.
  * Pads (up to 2, hot-plug): see m2/m2input.c for the layout.
  */
 #include "../m2/m2board.h"
+#include "../m2/m2dump.h"
 #include "../m2/m2geo.h"
 #include "../m2/m2gl.h"
 #include "../m2/m2input.h"
@@ -239,6 +241,19 @@ static int pad_has_sticks(int device)
     return axes >= 2;
 }
 
+/* The game's side of a pad: its Start opens the pause popup instead, and
+   Back inserts a coin and then presses Start (a few frames apart: the games
+   want the credit before the press). *seq counts the frames since Back. */
+static void game_pad(uint8_t *b, int *seq)
+{
+    int back = b[M2PAD_BACK];
+    if (*seq || back) (*seq)++;
+    if (*seq > 16 && !back) *seq = 0;
+    if (*seq > 1000) *seq = 1000;
+    b[M2PAD_BACK] = *seq >= 1 && *seq <= 6;
+    b[M2PAD_START] = *seq >= 10;
+}
+
 static int pad_button_from_sdl(int b)
 {
     return b >= 0 && b < M2PAD_BUTTONS ? b : -1;   /* same order as SDL_GameControllerButton */
@@ -440,12 +455,13 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
             FAIL("Can't start the emulation threads: %s", SDL_GetError());
         }
     }
-    int in_flight = 0, want_reset = 0;
+    int in_flight = 0, want_reset = 0, want_dump = 0;
 
     const double frame_s = 1.0 / game->fps;
     const double freq = (double)SDL_GetPerformanceFrequency();
     double next = SDL_GetPerformanceCounter() / freq;
     int running = 1, paused = 0, fast = 0, frames = 0, drawn = 0;
+    int menu = 0, back_seq[2] = { 0, 0 };   /* the pause popup; Back's coin + Start */
     /* frame skip: when running late, the frame just collected isn't drawn
        (nor its tile layers made and uploaded: what changed carries over to
        the next one); the board and the geometrizer still run every frame */
@@ -457,6 +473,14 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
     while (running) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            if (menu) {   /* the popup has the controls; pad Start or B closes it */
+                m2pause_event(&e);
+                if (e.type == SDL_CONTROLLERBUTTONDOWN &&
+                    (e.cbutton.button == SDL_CONTROLLER_BUTTON_START || e.cbutton.button == SDL_CONTROLLER_BUTTON_B))
+                    menu = -1;
+                if (e.type != SDL_QUIT && e.type != SDL_CONTROLLERDEVICEADDED && e.type != SDL_CONTROLLERDEVICEREMOVED)
+                    continue;
+            }
             switch (e.type) {
             case SDL_QUIT:
                 running = 0;
@@ -477,7 +501,8 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
                     }
                     else if (sc == SDL_SCANCODE_F3) want_reset = 1;
                     else if (sc == SDL_SCANCODE_F6) tex_filter = (tex_filter + 1) % 3;
-                    else if (sc == SDL_SCANCODE_F7) saturation = saturation < 1.1f ? 1.2f : saturation < 1.3f ? 1.4f : 1.0f;
+                    else if (sc == SDL_SCANCODE_F5) saturation = saturation < 1.1f ? 1.2f : saturation < 1.3f ? 1.4f : 1.0f;
+                    else if (sc == SDL_SCANCODE_F7) want_dump = 1;
                     else if (sc == SDL_SCANCODE_F8) mesh_blend = !mesh_blend;
                     else if (sc == SDL_SCANCODE_F9) wide_on = !wide_on;
                     else if (sc == SDL_SCANCODE_F10) scale_opt = (scale_opt + 1) % 5;
@@ -534,6 +559,11 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
                     if (pads[p] && SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pads[p])) == e.cbutton.which) {
                         int k = pad_button_from_sdl(e.cbutton.button);
                         if (k >= 0) raw.pad[p][k] = e.type == SDL_CONTROLLERBUTTONDOWN;
+                        if (k == M2PAD_START && e.type == SDL_CONTROLLERBUTTONDOWN && m2pause_available()) {
+                            menu = 1;
+                            m2pause_open();
+                            if (audio) SDL_PauseAudioDevice(audio, 1);
+                        }
                     }
                 break;
             case SDL_CONTROLLERAXISMOTION:
@@ -545,7 +575,7 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
             }
         }
 
-        if (actions) {   /* debugging: M2EMU_ACTIONS=iteration:p|r|q,... (pause, F3, quit) */
+        if (actions) {   /* debugging: M2EMU_ACTIONS=iteration:p|r|q|m|d,... (pause, F3, quit, pause popup, F7) */
             for (const char *k = actions; *k;) {
                 long at = 0;
                 char act = 0;
@@ -553,6 +583,8 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
                     if (act == 'p') paused = !paused;
                     if (act == 'r') want_reset = 1;
                     if (act == 'q') running = 0;
+                    if (act == 'd') want_dump = 1;
+                    if (act == 'm' && m2pause_available()) { menu = 1; m2pause_open(); }
                     if (act == 'p' && audio) SDL_PauseAudioDevice(audio, paused);
                 }
                 k = strchr(k, ',');
@@ -578,6 +610,20 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
             p->pf_cur = p->pf;
             p->has_cur = 1;
             drew = 1;
+        }
+
+        /* F7: the frame about to be drawn, its 3D as a model; the
+           geometrizer threads are idle and `vb` still holds that frame */
+        if (want_dump && pl[0].has_cur) {
+            for (int i = 0; i < nplayers; i++) {
+                player *p = &pl[i];
+                char dir[256], msg[1300];
+                snprintf(dir, sizeof dir, "dumps/%s_%u%s", game->name, (unsigned)p->pf_cur.frame,
+                         nplayers > 1 ? (i ? "_p2" : "_p1") : "");
+                m2dump_scene(p->geo, p->vb, p->tg->remap, (const uint8_t (*)[256])p->tg->gamma, dir, msg, sizeof msg);
+                printf("%s\n", msg);
+            }
+            want_dump = 0;
         }
 
         /* collect the frame the board threads were running; from here until
@@ -611,11 +657,18 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
             script_keys(script, (uint32_t)pl[0].b->frame, raw.key);
         if (script2)
             script_keys(script2, (uint32_t)pl[0].b->frame, key2);
-        if (!paused) {   /* start the next frame */
+        if (menu < 0) {   /* the popup closed: Continue */
+            menu = 0;
+            memset(raw.pad, 0, sizeof raw.pad);   /* its buttons don't reach the game */
+            if (audio) SDL_PauseAudioDevice(audio, paused);
+        }
+        if (!paused && !menu) {   /* start the next frame */
             if (!coop) {
                 memcpy(pl[0].in.key, raw.key, sizeof raw.key);
                 memcpy(pl[0].in.pad, raw.pad, sizeof raw.pad);
                 memcpy(pl[0].in.axis, raw.axis, sizeof raw.axis);
+                game_pad(pl[0].in.pad[0], &back_seq[0]);
+                game_pad(pl[0].in.pad[1], &back_seq[1]);
             } else {
                 for (int i = 0; i < 2; i++) {
                     m2_input_state *in = &pl[i].in;
@@ -624,6 +677,7 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
                     memset(in->axis, 0, sizeof in->axis);
                     memcpy(in->pad[0], raw.pad[i], sizeof in->pad[0]);
                     memcpy(in->axis[0], raw.axis[i], sizeof in->axis[0]);
+                    game_pad(in->pad[0], &back_seq[i]);
                 }
             }
             for (int i = 0; i < nplayers; i++)
@@ -705,7 +759,7 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
         }
 
         /* draw the frames made (or the last ones again) */
-        skip_draw = skip_next && drew;
+        skip_draw = skip_next && drew && !menu;
         skip_next = 0;
         if (!pl[0].has_cur && !skip_draw) {   /* none yet */
             glClearColor(0, 0, 0, 1);
@@ -757,6 +811,15 @@ static int run_game(SDL_Window *win, const m2_options *o, const char *game_name,
             if (f) fclose(f);
             free(px);
             running = 0;
+        }
+        if (menu > 0) {   /* the pause popup over the game's picture */
+            int r = m2pause_frame(win);
+            if (r == 1)
+                menu = -1;
+            else if (r == 2) {   /* Exit: the whole program */
+                running = 0;
+                quit_app = 1;
+            }
         }
         if (!skip_draw) {
             SDL_GL_SwapWindow(win);
@@ -896,8 +959,8 @@ static void usage(void)
                     "         [--shifter sequential|hpattern] [--hold-gears] [--pipeline on|off] [--frame-skip auto|off]\n"
                     "         [--aspect keep|stretch|crop] [--coop [--split side|stack]]\n"
                     "keys: Esc quit (with the launcher: back to it), F3 reset, P pause, Tab fast forward,\n"
-                    "      F6 texture filter, F7 saturation, F8 mesh, F9 widescreen, F10 scale,\n"
-                    "      F11 fullscreen.\n"
+                    "      F5 saturation, F6 texture filter, F7 3D scene to a model (dumps/), F8 mesh,\n"
+                    "      F9 widescreen, F10 scale, F11 fullscreen.\n"
                     "Full guide: port/README.md\n"
                     "games:");
     for (int i = 0; i < n; i++)
@@ -993,12 +1056,13 @@ int main(int argc, char **argv)
 
     char err[1024] = "";
     int status = 0;
+    int gui_ok = m2launch_init(win, ctx, USE_GLES) == 0;   /* also the pause popup */
     if (no_gui) {
         if (run_game(win, &o, game_name, 0, err, sizeof err) < 0) {
             fprintf(stderr, "%s\n", err);
             status = 1;
         }
-    } else if (m2launch_init(win, ctx, USE_GLES)) {
+    } else if (!gui_ok) {
         fprintf(stderr, "the launcher can't start (use --no-gui)\n");
         status = 1;
     } else {
@@ -1014,8 +1078,8 @@ int main(int argc, char **argv)
                 break;
             msg = r < 0 ? err : NULL;
         }
-        m2launch_shutdown();
     }
+    m2launch_shutdown();
     SDL_GL_DeleteContext(ctx);
     SDL_DestroyWindow(win);
     SDL_Quit();

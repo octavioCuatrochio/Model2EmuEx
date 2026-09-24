@@ -9,6 +9,7 @@ notified through `m2_hooks`.
 Files:
 - `m2tile.c/h`: text/tile layers (port of the original's System 24-style tilemap code).
 - `m2geo.c/h`: 3D geometrizer and rasterizer front end (display list → sorted, clipped, projected polygons).
+- `m2dump.c/h`: a frame's 3D as an OBJ + MTL + PNG atlas (F7): the geometrizer in dump mode (nothing clipped or culled, camera space), textures coloured as `m2gl.c` does, decals lifted.
 - `m2gl.c/h`: OpenGL renderer (tile layers, polygons, colour pipeline in shaders), the OpenGL ES 2 feature set on desktop OpenGL 2.1+ or OpenGL ES 2.
 - `m2glapi.c/h`: the GL functions and constants it uses, loaded at run time (no GL library linked).
 - `m2wide.c/h`: per-game widescreen rules (from the original's Lua scripts).

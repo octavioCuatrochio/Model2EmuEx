@@ -3,6 +3,7 @@
 #include "m2tile.h"
 #include "m2input.h"
 #include "m2geo.h"
+#include "m2dump.h"
 #include "m2pipe.h"
 #include "m2net.h"
 #include "../snd/m2snd.h"
@@ -248,7 +249,7 @@ int main(int argc, char **argv)
     }
     int geohash = getenv("M2_GEOHASH") != NULL;   /* 3D output checksum, every frame */
     uint64_t gh = 1469598103934665603ull;
-    m2_geo *geo = getenv("M2_GEO") || getenv("M2_BENCH") || geohash ? m2geo_create() : NULL;
+    m2_geo *geo = getenv("M2_GEO") || getenv("M2_BENCH") || geohash || getenv("M2_SCENE") ? m2geo_create() : NULL;
     m2_input_state ins;
     m2input_init(&ins);
 
@@ -323,6 +324,8 @@ int main(int argc, char **argv)
             double t3 = now_ms();
             tb[0] += t1 - t0; tb[1] += t2 - t1; tb[2] += t3 - t2;
         }
+        if (getenv("M2_SCENE") && !bench && !geohash)   /* keep its state (polygon and texture RAM) current */
+            m2geo_run(geo, vb);
         if (geohash) {   /* FNV-1a over the polygons in drawing order, then the tile output */
             m2geo_run(geo, vb);
             for (int i = 0; i < geo->npolys; i++) {
@@ -431,6 +434,11 @@ int main(int argc, char **argv)
             }
             fclose(f);
         }
+    }
+    if (getenv("M2_SCENE") && geo) {   /* the last frame's 3D as a model (m2dump.h) into this folder */
+        char msg[1300];
+        m2dump_scene(geo, vb, tg.remap, (const uint8_t (*)[256])tg.gamma, getenv("M2_SCENE"), msg, sizeof msg);
+        printf("%s\n", msg);
     }
     if (getenv("M2_RAM")) {
         FILE *f = fopen(getenv("M2_RAM"), "wb");

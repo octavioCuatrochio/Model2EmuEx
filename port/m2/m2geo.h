@@ -44,7 +44,16 @@ typedef struct {
 
 typedef struct { float x, y, z; } m2_vec3;
 
-typedef struct {
+struct m2_geo;
+/* Dump mode (m2dump.c): every polygon the display list draws, whole, in
+   camera space before the perspective divide: x right, y up, z depth, in
+   the game's units (the focus scaling taken out); u, v texels inside one
+   copy of the texture, as m2_gvert. obj/obj_addr in the m2_geo say which
+   object it belongs to. */
+typedef void (*m2_geo_dump_fn)(void *user, const struct m2_geo *g, const m2_gvert *v, int n,
+                               const uint16_t th[4], uint8_t luma);
+
+typedef struct m2_geo {
     /* geometrizer state */
     float    matrix[12];
     float    focus_x, focus_y;
@@ -82,6 +91,18 @@ typedef struct {
        so a frame stays drawable while the next one is made */
     m2_gpoly *polys_prev;
     uint32_t *order_prev;
+
+    /* dump mode: with `dump` set, m2geo_run neither clips nor culls (only
+       what the list marks as not drawn is left out), outputs nothing to
+       draw, and hands every polygon to dump */
+    m2_geo_dump_fn dump;
+    void     *dump_user;
+    uint32_t  obj;        /* objects so far this run (the current one's number) */
+    uint32_t  obj_addr;   /* its polygon data address; 0xffffffff: direct data */
+    /* the current polygon's normal (camera space, as the list gives it), if
+       it has one (not direct data) */
+    m2_vec3   dump_nrm;
+    int       dump_has_nrm;
 } m2_geo;
 
 /* One run's output, back to front: polys[order[i]] for i < npolys. Stays
@@ -103,6 +124,10 @@ void    m2geo_destroy(m2_geo *g);
 /* Processes this frame's display list; the result is g->polys[g->order[i]]
    for i < g->npolys, back to front. */
 void    m2geo_run(m2_geo *g, const struct m2_board *b);
+/* dst takes src's geometrizer state (matrices, polygon and texture RAM,
+   windows...), keeping its own output buffers and dump settings: to run a
+   frame's list again in dump mode without disturbing src. */
+void    m2geo_copy_state(m2_geo *dst, const m2_geo *src);
 
 #ifdef __cplusplus
 }

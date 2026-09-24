@@ -191,7 +191,7 @@ Configuration tab has the same settings.
 | `--sharp` | smooth | nearest-neighbour instead of linear filtering when scaling the finished picture to the window |
 | `--texture-filter nearest\|bilinear\|trilinear` | nearest | filtering of the 3D textures: nearest = square texels, as the hardware and MAME; bilinear = smooth, as the original emulator's Direct3D; trilinear = bilinear, and distant or slanted textures averaged over each pixel so they don't shimmer. F6 cycles. Bilinear and trilinear are for PC graphics cards (on the Mali-400 keep nearest) |
 | `--mesh blend\|checker` | blend | mesh polygons (shadows, fences): 50% see-through, or the hardware's every-other-pixel checkerboard; F8 toggles |
-| `--saturation S` | 1.0 | colour saturation boost in the final pass (1.0 = as the hardware); F7 cycles 1.0 / 1.2 / 1.4 |
+| `--saturation S` | 1.0 | colour saturation boost in the final pass (1.0 = as the hardware); F5 cycles 1.0 / 1.2 / 1.4 |
 | `--gamma G` or `--gamma R,G,B` | 1.0 | colour gamma, as the original's GammaR/G/B (applies to tiles and 3D); above 1 brightens mid-tones |
 | `--shifter sequential\|hpattern` | hpattern | keyboard gears: one key per gear, or A/S step down/up (the original's UpDownGears) |
 | `--hold-gears` | off | H-pattern: drop to neutral when no gear key is held (the original's HoldGears) |
@@ -211,8 +211,9 @@ and the game list. Unknown options stop the program with a message.
 | F3 | reset the machine (save data kept) |
 | P | pause |
 | Tab (hold) | fast forward (sound keeps normal speed; some sound commands may be dropped) |
+| F5 | saturation 1.0 / 1.2 / 1.4 |
 | F6 | texture filter: nearest / bilinear / trilinear |
-| F7 | saturation 1.0 / 1.2 / 1.4 |
+| F7 | the 3D scene to a model: `dumps/<game>_<frame>/scene.obj` (see "3D scene dumps") |
 | F8 | mesh: blend / checker |
 | F9 | widescreen on/off |
 | F10 | render scale: auto, 1, 2, 3, 4 |
@@ -220,6 +221,52 @@ and the game list. Unknown options stop the program with a message.
 
 The window title shows the frame rate, the gear (driving games), and
 whether widescreen is on.
+
+## 3D scene dumps (F7)
+
+F7 writes the 3D of the frame on screen as a model, to
+`dumps/<game>_<frame>/` in the folder the emulator runs in (Android:
+`/sdcard/Android/data/org.m2emu/files/dumps`). Two players (`--coop`):
+one folder each, `_p1` and `_p2`. It works while paused (P), and takes
+about a second.
+
+| File | Contents |
+|------|----------|
+| `scene.obj` | every polygon the game sent, each object where the game put it |
+| `scene.mtl` | three materials on the atlas: `opaque` (no alpha), `cutout` (see-through texels: fences, trees, window nets) and `mesh` (50%) |
+| `scene.png` | the textures, all in one atlas |
+
+In Blender: File > Import > Wavefront (.obj).
+
+- **Axes and units:** camera space in the game's own units, with the
+  game's camera at the origin looking down -z and y up. The header comment
+  gives the camera's lens (focus, in pixels of the 496 x 384 picture, and
+  where its centre falls), so the game's view can be rebuilt. In Blender:
+  horizontal field of view 2 atan(248 / focus).
+- **Objects:** each object of the display list is an OBJ object named
+  `obj<number>_<address>`. The address is where its polygon data lives, so
+  the same model (a car, a wheel, a fighter's arm) keeps its name from one
+  frame to the next. A car is several objects: its body, the glass, the
+  window bars and the wheels.
+- **Nothing is cut:** polygons outside the view, and those facing away
+  from the camera, are kept, so a model is whole from every side. The 2D
+  layers (sky, text, the HUD) are not 3D, so they are not in it.
+- **Textures:** coloured as the game shows them, at the brightest lighting
+  each is used with in that frame. Lighting is not baked into the faces.
+  Translucent texels have alpha 0, and mesh polygons (shadows, which the
+  hardware draws as a checkerboard) are 50% transparent.
+- **Normals:** one per face, the game's own (Model 2 lists a normal with
+  every polygon, for its lighting and to hide the faces seen from behind),
+  pointing out of the model, with the corners in the matching order, so
+  backface culling and exporters get the right side.
+- **Alpha:** only the `cutout` and `mesh` materials have it. An exporter
+  (glTF, FBX) makes a material with alpha blended, and blended surfaces
+  are drawn without depth, in the wrong order. For glTF, the `cutout`
+  material works better as alpha clip: in Blender, route its alpha through
+  a Math node set to Round.
+- **Decals:** the game keeps a decal on top of what it lies on (logos,
+  numbers, window bars) by drawing it later. A model only has depth, so
+  the dump lifts each decal off its surface by 0.2% of the object's size.
 
 ## Game controls — keyboard
 
@@ -333,7 +380,7 @@ over. With no file, Daytona starts with its link setting on "single"
 | `M2EMU_KEYS2=...` | m2emu | the same for player 2 with `--coop` |
 | `M2EMU_BENCH=N` | m2emu | run N frames unthrottled and print a timing split |
 | `M2EMU_BENCH_FROM=F` | m2emu | with `M2EMU_BENCH`: time only frames F to N (e.g. a race, after the attract mode) |
-| `M2EMU_ACTIONS=iter:a,...` | m2emu | frontend actions by main-loop iteration: `p` pause/unpause, `r` reset (F3), `q` quit |
+| `M2EMU_ACTIONS=iter:a,...` | m2emu | frontend actions by main-loop iteration: `p` pause/unpause, `r` reset (F3), `q` quit, `m` pause popup, `d` 3D scene dump (F7) |
 | `M2EMU_GUI_SHOT=file.ppm:N` | m2emu | save the launcher's picture after N frames, then quit |
 | `M2EMU_GUI_TAB=games\|config` | m2emu | open the launcher on that tab |
 | `M2EMU_GUI_PLAY=1` | m2emu | press Play once, for the selected (last) game |
@@ -416,6 +463,7 @@ Controlled by environment variables:
 | `M2_IOTRACE=n` | from frame n, count I/O board reads |
 | `M2_RAM=file` | write main RAM at the end |
 | `M2_ROMS=prefix` | write every ROM region to `prefix-regionN.bin` |
+| `M2_SCENE=folder` | write the last frame's 3D as a model into `folder`, as F7 in `m2emu` |
 | `M2_TGP_RECORD=file:from:to` | record the TGP's state at frame `from` and every access to it until `to`, for `tgp/test/replay.c` |
 
 `tools/i960dis.py` and `tools/m68kdis.c` disassemble the RAM/ROM dumps.
@@ -426,7 +474,7 @@ Controlled by environment variables:
 |-----------|----------|
 | `i960/` | main CPU (Intel i960KB), with its bug list `QUIRKS.md` |
 | `tgp/` | geometry DSP (Fujitsu MB86234 TGP) |
-| `m2/` | board, ROM loader, 2D tile layers, 3D, renderer, input, widescreen rules, frame hand-over between threads, network link between boards; `m2/README.md` and `m2/QUIRKS.md` |
+| `m2/` | board, ROM loader, 2D tile layers, 3D, renderer, 3D scene dumps (`m2dump.c`), input, widescreen rules, frame hand-over between threads, network link between boards; `m2/README.md` and `m2/QUIRKS.md` |
 | `snd/` | sound boards (SCSP, MultiPCM, YM3438), `snd/QUIRKS.md` |
 | `m68k/`, `ymfm/` | third-party cores: Musashi 68000 (MIT), ymfm (BSD-3) |
 | `sdl/` | the desktop frontend: `m2emu.c` (games), `launcher.cpp` (the launcher), `options.c` (command line and `m2emu.ini`), `dirlist.c` (folder listing), `imgui_impl_m2gl.cpp` (Dear ImGui drawn with the port's GL layer), `font_roboto.inc` (Roboto Medium, Apache License 2.0) |

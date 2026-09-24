@@ -155,6 +155,22 @@ typedef struct {            /* one object's strip state (MAME: command buffer) *
 static void emit_piece(m2_geo *g, const pvert *a, int n, const uint16_t th[4], uint8_t luma,
                        uint16_t zval, uint32_t seq)
 {
+    if (g->dump) {   /* camera space, the focus scaling (objects only) taken out */
+        m2_gvert d[M2_POLY_VERTS + 4];
+        int direct = g->obj_addr == 0xffffffffu;
+        float fx = !direct && g->focus_x != 0 ? g->focus_x : 1, fy = !direct && g->focus_y != 0 ? g->focus_y : 1;
+        if (n < 3 || n > M2_POLY_VERTS + 4)
+            return;
+        for (int i = 0; i < n; i++) {
+            d[i].x = a[i].x / fx;
+            d[i].y = a[i].y / fy;
+            d[i].z = a[i].z;
+            d[i].u = a[i].u;
+            d[i].v = a[i].v;
+        }
+        g->dump(g->dump_user, g, d, n, th, luma);
+        return;
+    }
     if (n < 3 || g->npolys >= M2_MAX_POLYS)
         return;
     m2_gpoly *p = &g->polys[g->npolys++];
@@ -268,11 +284,11 @@ static void raster_poly(m2_geo *g, const m2_board *b, strip *s, uint32_t attr, i
     s->tha += (uint32_t)(tho * 4);
 
     int cull = 0;
-    if (!((attr >> 17) & 1) && (lumaword & 0x800000))   /* single sided, back face */
+    if (!((attr >> 17) & 1) && (lumaword & 0x800000) && !g->dump)   /* single sided, back face */
         cull = 1;
     if (((attr >> 8) & 3) == 0)                          /* link type 0: not drawn */
         cull = 1;
-    if (max_z < 0)
+    if (max_z < 0 && !g->dump)
         cull = 1;
 
     float zvalue;
@@ -284,7 +300,7 @@ static void raster_poly(m2_geo *g, const m2_board *b, strip *s, uint32_t attr, i
     }
     g->polygon_z = zvalue;
 
-    if (!cull && g->npolys < M2_MAX_POLYS) {
+    if (!cull && (g->npolys < M2_MAX_POLYS || g->dump)) {
         for (int i = 0; i < nv; i++) {
             v[i].v = tex16(g, b, tpa + i * 2) * 0.125f;       /* 13.3 fixed point */
             v[i].u = tex16(g, b, tpa + i * 2 + 1) * 0.125f;
@@ -298,7 +314,7 @@ static void raster_poly(m2_geo *g, const m2_board *b, strip *s, uint32_t attr, i
         const pvert *cur = v;
         pvert *nxt = a;
         int n = nv;
-        for (int k = 0; k < 4 && n > 2; k++) {
+        for (int k = 0; k < 4 && n > 2 && !g->dump; k++) {
             if (all_inside(cur, n, g->clip_n[g->center_sel][k]))
                 continue;
             n = clip_poly(cur, n, nxt, g->clip_n[g->center_sel][k]);
@@ -387,6 +403,8 @@ static void parse_object(m2_geo *g, const m2_board *b, wstream *in, uint32_t cou
             in->pos += 3;
             pt[3] = pt[2];
         }
+        g->dump_nrm = nrm;
+        g->dump_has_nrm = 1;
         raster_poly(g, b, s, attr & 0x3ffff, (attr & 1) ? 4 : 3, p, p3, luma << 15);
 
         if (!normals) {   /* keep the unfocused points linked like the raster's */
@@ -406,6 +424,8 @@ static void cmd_object(m2_geo *g, const m2_board *b, uint32_t op, wstream *list)
     s.tha = rd(list);
     uint32_t oba = rd(list), obc = rd(list);
     g->center_sel = (op >> 29) & 3;
+    g->obj++;
+    g->obj_addr = oba;
 
     wstream in;
     if (oba & 0x01000000) {
@@ -428,6 +448,9 @@ static void cmd_direct(m2_geo *g, const m2_board *b, uint32_t op, wstream *in)
     s.tpa = rd(in);
     s.tha = rd(in);
     g->center_sel = ((((op >> 23) - 1) >> 6) & 3);
+    g->obj++;
+    g->obj_addr = 0xffffffffu;
+    g->dump_has_nrm = 0;
     pvert p = { 0, 0, 0, 0, 0 };
     p.x = u2f(rd(in) & ~0xffu); p.y = u2f(rd(in) & ~0xffu); p.z = u2f(rd(in) & ~0xffu);
     s.p0 = p;
@@ -562,6 +585,7 @@ void m2geo_run(m2_geo *g, const m2_board *b)
     g->order_prev = po;
     g->npolys = 0;
     g->seq = 0;
+    g->obj = 0;
     g->xoff = 84.0f + b->hsync;
     g->yoff = 130.0f + b->vsync;
     g->cur_window = 0;
@@ -639,5 +663,17 @@ void m2geo_run(m2_geo *g, const m2_board *b)
         }
     }
 done:
-    sort_draw(g);
+    if (!g->dump)
+        sort_draw(g);
+}
+
+void m2geo_copy_state(m2_geo *dst, const m2_geo *src)
+{
+    m2_geo keep = *dst;
+    memcpy(dst, src, sizeof *dst);
+    dst->polys = keep.polys; dst->order = keep.order; dst->order_tmp = keep.order_tmp;
+    dst->polys_prev = keep.polys_prev; dst->order_prev = keep.order_prev;
+    dst->npolys = 0;
+    dst->dump = keep.dump;
+    dst->dump_user = keep.dump_user;
 }
